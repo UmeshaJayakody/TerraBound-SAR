@@ -3,6 +3,29 @@
 TripTap is a full-featured online vehicle renting marketplace built using Node.js and MongoDB, with a React.js frontend. It allows vehicle owners to list their vehicles for rent and users to search, book, and pay for rentals securely. Integrated with Google Maps API for advanced location-based features.
 
 ---
+## Prerequisites
+
+- **Node.js**: Version 16.x or higher (includes npm)
+- **MongoDB**: Version 5.x or higher (local or cloud-hosted like MongoDB Atlas)
+- **Git**: For version control and cloning the repository
+- **Code Editor**: VS Code, IntelliJ IDEA, or any preferred editor
+- **Make (GnuWin)(optional)**
+   - ## Installing Make on Windows
+      1. Download the [GnuWin Make setup](https://sourceforge.net/projects/gnuwin32/files/make/3.81/make-3.81.exe/download?use_mirror=webwerks&download) and install it.
+      2. **Add Make to your system PATH environment variable:**
+         - Open the Start Menu and search for "Environment Variables".
+         - Click "Edit the system environment variables".
+         - In the System Properties window, click "Environment Variables".
+         - Under "System variables", find and select the `Path` variable, then click "Edit".
+         - Click "New" and add the path to the GnuWin32 `bin` directory (e.g., `C:\Program Files (x86)\GnuWin32\bin`).
+         - Click OK to close all dialogs.
+      3. Open a new terminal and run:
+         ```sh
+         make --version
+         ```
+         to verify that `make` is installed.
+
+---
 
 ## Tech Stack
 
