@@ -10,25 +10,6 @@ Real matched HR/LR SAR image pairs of the same scene essentially don't exist pub
 
 `RaySAR_Workspace/` is fully self-contained (the ray-tracing engine, its support library, and RaySAR's MATLAB code are all bundled inside it) and is the only folder published to this project's GitHub repo. Everything else in this local folder — the original vendor package, source 3D models, proposal/meeting docs — is local working context that supports it but isn't part of the published pipeline. Everything below this section is that context, for how the pipeline fits into the FYP as a whole.
 
-## Repository layout (local working directory — not all of this is on GitHub)
-
-```
-RaySAR_Workspace/        Published to GitHub. The working pipeline -- scene generation, rendering,
-                          reflectivity-map generation, LR degradation, all scripted and reusable.
-                          Self-contained: does not depend on any of the folders below.
-RaySAR_1.2/               Local only. The original RaySAR 1.2 vendor package (POV-Ray installers,
-                          adapted engine, MATLAB source, official docs/test models) that
-                          RaySAR_Workspace was originally set up from. Kept here for reference
-                          (e.g. RaySAR's official documentation/PDFs) -- not required to run the
-                          pipeline, since RaySAR_Workspace already has its own copies of everything
-                          it needs.
-object files/             Local only. Real 3D models (.obj) used as richer, more realistic scene
-                          input via RaySAR_Workspace/Scripts/Convert_OBJ_to_POV.m, instead of
-                          hand-built procedural geometry.
-```
-
-The original project proposal/meeting-notes/workflow-description PDFs these sections are drawn from have been merged into this README and removed to keep the working directory to just what's actively used.
-
 ## Project goal and dataset requirements
 
 Per supervisor guidance (Adeesha Wijayasiri), the dataset needs a minimum of 10 distinct scenarios (city, desert, sea, roads, moving objects, people, etc.), each with paired low/high-resolution SAR output, across multiple resolution tiers.
