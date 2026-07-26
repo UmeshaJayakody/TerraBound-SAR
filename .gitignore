@@ -1,0 +1,20 @@
+# Local-only project material -- kept for reference on this machine, not part
+# of the published pipeline. See README.md for why these aren't tracked.
+/.claude/
+/RaySAR_1.2/
+
+# Regenerable pipeline output: large, and reproducible by re-running the
+# Scripts against a scene's Contributions.txt. Keep the final HR/LR PNG
+# results (small, meant to be viewed on GitHub) but drop the bulky
+# intermediate/raw data.
+RaySAR_Workspace/**/Contributions.txt
+RaySAR_Workspace/**/Maps/Frames/**
+RaySAR_Workspace/**/Maps/Image_data/**
+RaySAR_Workspace/**/*.tif
+RaySAR_Workspace/**/*.mat
+
+# OS / editor / MATLAB cruft
+Thumbs.db
+.DS_Store
+*.asv
+*.m~
