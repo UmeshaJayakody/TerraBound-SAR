@@ -39,9 +39,10 @@ The project scope also covers SAR **video**, not just still images, and targets 
 
 ## Overall pipeline (this project's methodology)
 
+1. **Synthetic data generation with RaySAR** — produces high-fidelity "ground truth" SAR images with full control over scene content, incidence angle, and imaging geometry.
+
 ![Pipeline overview: 3D scene -> RaySAR ray tracing -> Contributions.txt -> reflectivity map (HR image) -> degraded LR versions](RaySAR_Workspace/docs/pipeline_overview.png)
 
-1. **Synthetic data generation with RaySAR** — produces high-fidelity "ground truth" SAR images with full control over scene content, incidence angle, and imaging geometry.
 2. **Building LR/HR training pairs** — each RaySAR output is the HR target; synthetic degradation (downsampling, multiplicative speckle noise, mild blur) produces the matching LR input. Augmentation (random crops, rotations, flips) expands dataset diversity without needing more simulated scenes.
 3. **Training the GAN** — generator learns LR→HR mapping, discriminator tells generated from real HR images apart, trained adversarially with a combined pixel-wise + adversarial loss (PyTorch, CUDA).
 4. **Evaluation** — PSNR, SSIM, and a speckle-aware metric (ENL) so over-smoothing doesn't get missed by the general-purpose metrics alone.
