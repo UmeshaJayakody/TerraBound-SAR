@@ -1,4 +1,4 @@
-# SAR Image Super-Resolution via GAN, trained on a RaySAR-simulated dataset
+# RaySAR SAR Super-Resolution Dataset Pipeline
 
 Final Year Project: enhance low-resolution Synthetic Aperture Radar (SAR) images to high resolution using a GAN (SRGAN/ESRGAN-style generator/discriminator).
 
