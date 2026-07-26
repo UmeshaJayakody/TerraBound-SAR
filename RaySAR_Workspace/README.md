@@ -2,6 +2,8 @@
 
 A self-contained, working pipeline that generates synthetic SAR (Synthetic Aperture Radar) image datasets for training a super-resolution model — built for an FYP on enhancing low-resolution SAR images to high resolution using a GAN. Real matched HR/LR SAR image pairs of the same scene don't exist publicly, so this pipeline generates them synthetically: build a 3D scene, ray-trace it into a radar image, then synthetically degrade that image into matching low-resolution versions.
 
+**This repo is the dataset-creation pipeline for that FYP** — everything up to producing HR/LR training pairs. GAN model training/evaluation on top of this dataset is a separate, later phase of the project, not covered here.
+
 Everything needed to run it is already inside this folder — the RaySAR-adapted ray-tracing engine, its support library, RaySAR's own MATLAB code, and the custom scripts written on top of it. The only thing you need to install yourself is MATLAB.
 
 ---
@@ -19,7 +21,6 @@ scene (.pov)        (pvengine.exe)       signal data into         degrade the HR
                                                                     versions (MATLAB)
 ```
 
-![Pipeline overview: 3D scene -> RaySAR ray tracing -> Contributions.txt -> reflectivity map (HR image) -> degraded LR versions](docs/pipeline_overview.png)
 
 **Stage 1 — Build a 3D scene.** A `.pov` file is a plain-text description of a 3D scene in POV-Ray's own language: camera, light, ground, and objects (buildings, streets, cars, or an imported real 3D model). You either write one by hand, generate one with a MATLAB script in `Scripts/`, or convert a `.obj` 3D model file into one.
 
@@ -182,7 +183,21 @@ Generate_Refl_Map_From_File('POV_Ray/RaySAR/Contributions.txt', 'Scenes/MyCity_R
 
 ---
 
-## Part 6 — Troubleshooting / gotchas (read this before you burn hours debugging)
+## Part 6 — OBJ → POV conversion, step by step
+
+What `Convert_OBJ_to_POV.m` actually does to turn a real `.obj` 3D model into a working RaySAR scene, worked example numbers from the 33,810-vertex `Street environment_V01.obj` model:
+
+1. **Read and parse the geometry.** A `.obj` file is just two plain-text lists: `v x y z` lines (every vertex position) and `f a b c ...` lines (which vertices connect to form each surface). The script reads both in full — 33,810 vertices, 28,088 faces.
+2. **Triangulate every face.** POV-Ray's mesh format (`mesh2`) only accepts triangles, but `.obj` faces can have 4+ corners (quads, pentagons, etc.). Each such face is fan-triangulated (corner 1 + each adjacent pair of the rest). 28,088 faces became 49,748 triangles.
+3. **Fix the ground height (the critical, non-obvious step).** The ground plane's height was originally computed per-model as "1 unit below the model's lowest vertex" — reasonable-sounding, but if that lowest vertex happens to be a rare outlier, the ground ends up below world Y=0. The RaySAR engine hard-requires ground at Y≥0: go below that and it silently produces zero output, no error at all. The fix: shift every vertex up so the model's true minimum Y becomes exactly 0, then place the ground plane at exactly 0 — matching what every official RaySAR scene does.
+4. **Split the mesh into many small chunks.** Rather than one giant `mesh2` block for all 33,810 vertices, triangles are grouped into batches of ~100 vertices each — for this model, ~457 smaller `mesh2` objects. (This was originally built while chasing step 3's bug, on the theory it was a per-object vertex limit — it wasn't, that was a red herring — but it's kept anyway since it's harmless and mirrors how the working procedural scenes are already structured as many small objects.)
+5. **Write the `.pov` file.** Standard camera/light setup identical to every other working scene (co-located, orthographic, 45° incidence), ground plane at Y=0, then each mesh chunk written out as its own `mesh2 { vertex_vectors {...} face_indices {...} }` block with a material `finish{}` you choose.
+
+From here it's the same as any other scene: render with `pvengine.exe`, then run `Generate_Refl_Map_From_File.m` and `Degrade_To_LR.m` exactly as in Part 4 — nothing downstream needs to know or care that the scene came from a converted `.obj` instead of a procedural generator.
+
+---
+
+## Part 7 — Troubleshooting / gotchas (read this before you burn hours debugging)
 
 1. **Render silently produces nothing (no `.png`, no `Contributions.txt`, no error dialog, exit code 0).** The single most common cause: your scene's ground plane is at a negative Y coordinate. The RaySAR-adapted engine appears to hard-require ground at Y≥0 with all geometry at Y≥0 (every official RaySAR test scene follows this convention) — it doesn't just look wrong, it silently fails to produce any output at all. `Convert_OBJ_to_POV.m` already handles this automatically (shifts the whole model so its minimum Y is 0); if you hand-write a `.pov` file or write your own generator, keep ground at exactly `0`.
 2. **Auto-fit (`'Min'`/`'Max'`) image bounds produce a mostly-black image with real content crammed in a tiny corner.** This happens with large/imported meshes that produce a handful of stray, far-outlying signal contributions (seen with the 33k-vertex Street model — auto-fit produced an 11,000×7,000 pixel image that was 99% empty). Fix: compute robust bounds yourself instead of trusting auto-fit — sort the loaded azimuth/range values and take the 0.5th/99.5th percentile, then pass those as explicit numeric strings in `opts.a_min`/`a_max`/`r_min`/`r_max`. See `run_street01_pipeline.m` for the exact working code (no toolbox needed, just `sort()`).
@@ -192,7 +207,7 @@ Generate_Refl_Map_From_File('POV_Ray/RaySAR/Contributions.txt', 'Scenes/MyCity_R
 
 ---
 
-## Part 7 — Scenario realism notes
+## Part 8 — Scenario realism notes
 
 RaySAR is a geometric ray tracer, physically validated against real building/urban SAR imagery — that's genuinely its strength, and city/urban-type scenes here are on solid ground. Two scenario types are only approximations under this tool, worth knowing if your project needs them too:
 
@@ -201,7 +216,7 @@ RaySAR is a geometric ray tracer, physically validated against real building/urb
 
 ---
 
-## Part 8 — Supplementing with real SAR data
+## Part 9 — Supplementing with real SAR data
 
 A purely-simulated dataset has an inherent sim-to-real gap. These are free sources of real SAR imagery — use one as your "HR" image (skip Stages 1-3 entirely) and run it straight through `Degrade_To_LR.m`:
 
@@ -215,7 +230,7 @@ Pick the "detected"/amplitude product form (not raw complex/SLC) — that's a pl
 
 ---
 
-## Part 9 — References
+## Part 10 — References
 
 - S. Auer, S. Hinz, R. Bamler, "Ray-tracing simulation techniques for understanding high-resolution SAR images," IEEE TGRS, 2010.
 - S. Auer, R. Bamler, P. Reinartz, "RaySAR - 3D SAR simulator: Now open source," IGARSS, 2016.

@@ -4,6 +4,8 @@ Final Year Project: enhance low-resolution Synthetic Aperture Radar (SAR) images
 
 Real matched HR/LR SAR image pairs of the same scene essentially don't exist publicly — high-resolution SAR archives are mostly restricted/commercial, and no two captures of one place at both high and low resolution under identical conditions are freely available. This project works around that by generating its own paired dataset with [RaySAR](https://github.com/StefanJAuer/RaySAR.git), a ray-tracing-based 3D SAR simulator: render a scene once for a clean "HR" image, then synthetically degrade it (blur + downsample + realistic speckle noise) to produce the matching "LR" image. Both images originate from the same simulation, so they're pixel-aligned by construction — exactly what supervised training needs.
 
+**This repository is the dataset-creation pipeline for the main FYP project** — it covers everything up to producing the HR/LR training pairs. GAN model training/evaluation on top of this dataset is the next phase (not yet started — see Status at the bottom).
+
 ## Start here
 
 **→ [`RaySAR_Workspace/README.md`](RaySAR_Workspace/README.md) — the actual pipeline: setup, usage, and known gotchas.**
@@ -16,7 +18,7 @@ Per supervisor guidance (Adeesha Wijayasiri), the dataset needs a minimum of 10 
 
 The project scope also covers SAR **video**, not just still images, and targets a real-time/near-real-time GPU-accelerated pipeline (PyTorch/CUDA) — worth keeping in mind if the model architecture or evaluation plan needs to account for inference speed later, not just output quality. Known challenges called out from the start: limited high-quality SAR datasets (the whole reason this pipeline exists), high GPU/compute requirements, and maintaining physical realism (speckle/scattering characteristics) rather than just optimizing for smoothness.
 
-**A note on scenario realism:** RaySAR is a geometric ray tracer, physically validated against real building/urban SAR imagery — that's genuinely its strength. Some requested scenario types (sea/water, moving vehicles) are only approximations under this tool — see `RaySAR_Workspace/README.md` Part 7 for why, and don't let chasing physical accuracy there take time away from the building/urban scenarios where results are actually defensible.
+**A note on scenario realism:** RaySAR is a geometric ray tracer, physically validated against real building/urban SAR imagery — that's genuinely its strength. Some requested scenario types (sea/water, moving vehicles) are only approximations under this tool — see `RaySAR_Workspace/README.md` Part 8 for why, and don't let chasing physical accuracy there take time away from the building/urban scenarios where results are actually defensible.
 
 ## Overall pipeline (this project's methodology)
 
@@ -30,6 +32,14 @@ The project scope also covers SAR **video**, not just still images, and targets 
 5. **Real-data validation** — since RaySAR output is still synthetic, a small set of real SAR images (see dataset links below) serves as a sim-to-real sanity check, and optionally a fine-tuning set.
 
 Key considerations carried over from the original methodology write-up: ray-tracing complex 3D scenes at high fidelity is computationally heavy, so dataset scale should be sized around what's realistically simulatable in the available time; and varying scene types, materials, and incidence angles reduces the risk of the model overfitting to one kind of geometry.
+
+## Building scenes from real 3D models (.obj)
+
+Besides procedurally-generated scenes, `Convert_OBJ_to_POV.m` turns a real Wavefront `.obj` 3D model into a RaySAR-ready scene, producing noticeably richer/more realistic geometry than hand-built procedural boxes (validated on a 33,810-vertex real street model — see `Street_01` in `RaySAR_Workspace/Scenes/`).
+
+![OBJ to POV conversion process: parse geometry, triangulate faces, fix ground height to Y=0, split into small mesh chunks, write the .pov scene file](RaySAR_Workspace/docs/obj_to_pov_conversion.png)
+
+Full step-by-step explanation of this conversion (including the two bugs found and fixed) is in `RaySAR_Workspace/README.md` Part 6.
 
 ## Supplementary real SAR datasets
 
