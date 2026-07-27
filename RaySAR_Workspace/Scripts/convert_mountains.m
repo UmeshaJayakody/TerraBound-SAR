@@ -1,0 +1,9 @@
+addpath('D:/FYP/RaySAR_Workspace/Scripts');
+
+opts.finish = 'finish {reflection {0.2} ambient 0 diffuse 0.5 specular 0.2 roughness 0.1}';
+opts.max_verts_per_mesh = 500;
+
+Convert_OBJ_to_POV( ...
+    'D:/FYP/object files/mountains.obj', ...
+    'D:/FYP/RaySAR_Workspace/Scenes/Mountains_01.pov', ...
+    opts);
