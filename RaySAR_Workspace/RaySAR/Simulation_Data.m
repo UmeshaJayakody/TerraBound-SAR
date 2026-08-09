@@ -139,7 +139,7 @@ function manual_changes_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
-global startdir;
+global startdir Model_path;
 
 % Get system architecture
 get_architecture = computer('arch');
@@ -147,17 +147,24 @@ get_architecture = computer('arch');
 % Case: windows
 if strcmp(get_architecture,'win32') == 1 || strcmp(get_architecture, 'win64')
 
-    %startdir=pwd;
-    cd('../POV_Ray/POV_reg');
-    system('pvengine.exe');
-    cd(startdir);
+    % Launching pvengine.exe blank (no file) leaves it with no MDI
+    % document window open, so its own File menu comes up reduced to
+    % just Help/Exit -- there is no way to reach Open from inside it.
+    % Ask MATLAB's own (reliable) file picker for the .pov file instead,
+    % defaulting to the Object Model folder, then hand that file
+    % straight to pvengine so it opens already loaded.
+    [str_body, path_body] = uigetfile([Model_path,'/*.pov'], 'Select .pov file to edit');
+    if isequal(str_body, 0)
+        return;
+    end
+    launch_pvengine(Model_path, fullfile(path_body, str_body));
 end
-    
-% Case: linux    
+
+% Case: linux
 if strcmp(get_architecture,'glnx86') == 1 || strcmp(get_architecture, 'glnxa64')
-    
+
     msgbox('Note that editing in the POV-Ray editor is not supported by the Linux version of POV-Ray. Hence, please edit the POV-Ray file in a Linux editor.','Editing','help');
-    
+
 end
     
 
@@ -167,16 +174,27 @@ function Render_it_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
+global Model_path;
+
 % Get system architecture
 get_architecture = computer('arch');
 
 % Case: windows
 if strcmp(get_architecture,'win32') == 1 || strcmp(get_architecture, 'win64')
 
-    startdir=pwd;
-    cd('../POV_Ray/RaySAR');
-    system('pvengine.exe');
-    cd(startdir);
+    % Pick the .pov file with MATLAB's own picker (reliable; Model_path
+    % is a folder, not a specific file). Render it the same way that has
+    % proven to reliably produce Contributions.txt -- a headless,
+    % non-interactive engine call -- instead of opening the interactive
+    % editor and depending on the user (or the adapted build's own GUI)
+    % to trigger and finish a render correctly. Contributions.txt lands
+    % in Model_path itself, the same folder Load Data in "2D maps"
+    % already looks in.
+    [str_body, path_body] = uigetfile([Model_path,'/*.pov'], 'Select .pov file to render');
+    if isequal(str_body, 0)
+        return;
+    end
+    render_headless(Model_path, fullfile(path_body, str_body));
 end
 
 % Case: linux    
@@ -614,4 +632,91 @@ else
         % display value in window
         msgbox(['Minimum stepwidth along the elevation axis for ray tracing: ', num2str(elevation_sampling), ' m. Further alternatives are obtained by deviding the value by integers.'],'Sampling along elevation axis','none');
     end
+end
+
+
+% --- Local helper: launch pvengine.exe safely (added for RaySAR_Workspace).
+function launch_pvengine(model_path, pov_file)
+% Fixes three real usability problems with the original "system('pvengine.exe')"
+% call used by both the "Manual editing" and "Rendering" buttons:
+%
+% 1) pvengine.exe only allows ONE instance to run at a time. If a previous
+%    editor window was left open, a new render attempt used to fail
+%    silently (or with a cryptic error), with no indication of why. Now
+%    checked for up front, with a clear message telling the user to close
+%    the existing window first.
+% 2) The original call was blocking: MATLAB's entire GUI froze until the
+%    POV-Ray window was closed, which looked like a hang. Now launched via
+%    "start", which returns immediately and leaves MATLAB responsive while
+%    POV-Ray is open.
+% 3) Launched with no file, pvengine.exe has no MDI document window open,
+%    so its own File menu comes up reduced to just Help/Exit -- there is
+%    no way to reach Open from inside it. Always launch it with a
+%    specific .pov file (picked via MATLAB's own uigetfile in the
+%    callers) using the same "/EDIT" switch Windows itself uses when you
+%    double-click a .pov file, so the scene opens already loaded.
+
+[~, tasklist_out] = system('tasklist /FI "IMAGENAME eq pvengine.exe" 2>NUL');
+if ~isempty(strfind(tasklist_out, 'pvengine.exe'))
+    errordlg(['A POV-Ray window is already open from a previous render. ', ...
+        'Please close it first (check your taskbar), then try again. ', ...
+        'Only one POV-Ray window can run at a time.'], ...
+        'POV-Ray already running');
+    return;
+end
+
+startdir = pwd;
+cd(model_path);
+if nargin < 2 || isempty(pov_file)
+    system('start "" pvengine.exe');
+else
+    system(['start "" pvengine.exe /EDIT "', pov_file, '"']);
+end
+cd(startdir);
+
+
+% --- Local helper: render a scene headlessly (added for RaySAR_Workspace).
+function render_headless(model_path, pov_file)
+% Renders pov_file with the RaySAR-adapted engine using the same
+% non-interactive, command-line call that has proven reliable from a
+% terminal, instead of opening the interactive editor and depending on
+% someone (or the adapted build's own GUI) to click Run and have it
+% actually complete -- which repeatedly failed to produce
+% Contributions.txt with no visible error. "/EXIT" makes pvengine.exe
+% close itself the moment the render finishes, so this call is safely
+% blocking: it returns exactly when the render is done (or has failed),
+% never leaving a window open.
+
+[~, tasklist_out] = system('tasklist /FI "IMAGENAME eq pvengine.exe" 2>NUL');
+if ~isempty(strfind(tasklist_out, 'pvengine.exe'))
+    errordlg(['A POV-Ray window is already open. Please close it first, ', ...
+        'then try again. Only one POV-Ray window can run at a time.'], ...
+        'POV-Ray already running');
+    return;
+end
+
+% POV_Ray/include sits next to Model_path's parent folder
+% (.../RaySAR_Workspace/Scenes -> .../RaySAR_Workspace/POV_Ray/include).
+workspace_root = fileparts(model_path);
+include_path = fullfile(workspace_root, 'POV_Ray', 'include');
+
+contrib_path = fullfile(model_path, 'Contributions.txt');
+if exist(contrib_path, 'file') == 2
+    delete(contrib_path);
+end
+
+h = waitbar(0, 'Rendering... this can take a while for large scenes.', 'Name', 'RaySAR render');
+
+startdir = pwd;
+cd(model_path);
+cmd = ['pvengine.exe /EXIT +I"', pov_file, '" +W1000 +H1000 +L"', include_path, '"'];
+[status, cmdout] = system(cmd);
+cd(startdir);
+
+close(h);
+
+if status == 0 && exist(contrib_path, 'file') == 2
+    msgbox(['Render complete. Contributions.txt written to ', model_path], 'Render finished');
+else
+    errordlg(['Render failed -- no Contributions.txt was produced. Engine output: ', cmdout], 'Render error');
 end

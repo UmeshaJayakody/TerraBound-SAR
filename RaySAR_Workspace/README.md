@@ -92,6 +92,27 @@ cd .\POV_Ray\RaySAR
 
 This should complete in a few seconds and produce **`Test_Runs\Step.png`** (a preview image) and **`POV_Ray\RaySAR\Contributions.txt`** (the actual SAR signal data — this is the important output, the PNG is just a visual sanity check). If both files appear, your setup works. If nothing appears, see the Troubleshooting section (Part 6) — this exact failure mode (silent, no error) has a known cause.
 
+### Step 1b: doing the same thing through RaySAR's own GUI
+
+RaySAR ships its own MATLAB GUI (`RaySAR/Simulation_Data.m`) as a point-and-click alternative to the terminal command above. Two real bugs in the stock GUI are fixed in this repo's copy so it's actually usable:
+
+- Launching `pvengine.exe` with no scene file open left it stuck with a broken, stripped-down File menu (no New/Open/Save) — there was no way to browse to a scene from inside it.
+- The Render button used to just open the engine interactively and depend on someone manually clicking Run inside its window, which did not reliably produce `Contributions.txt`.
+
+Both buttons now use MATLAB's own file picker to choose a `.pov` file instead of relying on the engine's own (broken) dialog:
+
+- **Manual editing** opens the chosen file directly in the POV-Ray editor (via the `/EDIT` switch, the same one Windows uses when you double-click a `.pov` file), so the source loads immediately instead of a blank window.
+- **Rendering** renders the chosen file headlessly — the same non-interactive command-line call as Step 1 above, just wrapped in a wait dialog — and only reports success once `Contributions.txt` genuinely exists on disk.
+
+To use it:
+
+1. In MATLAB: `addpath('RaySAR'); RaySAR`
+2. Set **Object Model** to this repo's `Scenes` folder.
+3. Click **Rendering**, pick a `.pov` file (e.g. `Street_01.pov`) from the dialog that appears, and wait for the "Render complete" popup — this can take a few minutes for large scenes.
+4. Open the **2D maps** tab, click **Load Data**, and pick the `Contributions.txt` that just appeared in `Scenes` to build the reflectivity map interactively (or skip the GUI here and call `Generate_Refl_Map_From_File.m` as in Step 2 below).
+
+This depends on a working copy of the adapted `pvengine.exe` sitting inside the `Scenes` folder itself (already included in this repo) — that's what makes `Contributions.txt` land where the GUI's Load Data dialog actually looks for it, instead of a mismatched path elsewhere.
+
 ### Step 2: turn Contributions.txt into an HR image
 
 Back in MATLAB:
