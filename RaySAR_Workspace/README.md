@@ -197,6 +197,7 @@ Generate_Refl_Map_From_File('POV_Ray/RaySAR/Contributions.txt', 'Scenes/MyCity_R
 | `Make_Box_City_Scene.m` | Simple procedural scene: isolated box buildings at given positions/sizes. Superseded by `Make_Urban_Scene.m` — kept as the simpler starting example. |
 | `Make_Urban_Scene.m` | The real procedural generator: a jittered grid of buildings with random rotation, some L-shaped, plus streets and scattered cars. Pass a different `seed` for a different layout. **Use this one for new procedural scenes.** |
 | `Convert_OBJ_to_POV.m` | Converts a Wavefront `.obj` 3D model into a RaySAR-ready `.pov` scene (via POV-Ray's `mesh2` primitive). Use this to get real building/street geometry instead of procedural boxes — see `Scenes/Street_01.pov` for a worked example (converted from a 33,810-vertex real street model). |
+| `OBJ_to_POV_GUI.m` | Point-and-click front end for `Convert_OBJ_to_POV.m`: pick a `.obj` file, pick a result folder, click Convert. Uses `Convert_OBJ_to_POV.m`'s default options (no advanced settings exposed) — for anything needing `up_axis`, `look_at`, or other overrides, call the script directly instead. See `Scenes/Desert_Desktop_Results/` for the reflectivity map generated from a scene converted this way. |
 | `Generate_Refl_Map_From_File.m` | Stage 3: turns a `Contributions.txt` into the HR reflectivity map image(s). Generalized wrapper around RaySAR's own `Gen_Refl_Map.m` so you don't have to drive the interactive GUI. |
 | `Degrade_To_LR.m` | Stage 4: turns one HR image into several LR tiers (blur + downsample + speckle noise). Toolbox-free (works on bare MATLAB). |
 | `run_city01_pipeline.m`, `run_urban01_pipeline.m`, `run_street01_pipeline.m` | Full worked examples, Stages 3-4 wired together, for each of the three example scenes already in `Scenes/`. Copy one of these as your starting template for a new scene. |
@@ -215,6 +216,21 @@ What `Convert_OBJ_to_POV.m` actually does to turn a real `.obj` 3D model into a 
 5. **Write the `.pov` file.** Standard camera/light setup identical to every other working scene (co-located, orthographic, 45° incidence), ground plane at Y=0, then each mesh chunk written out as its own `mesh2 { vertex_vectors {...} face_indices {...} }` block with a material `finish{}` you choose.
 
 From here it's the same as any other scene: render with `pvengine.exe`, then run `Generate_Refl_Map_From_File.m` and `Degrade_To_LR.m` exactly as in Part 4 — nothing downstream needs to know or care that the scene came from a converted `.obj` instead of a procedural generator.
+
+### Doing the conversion through a GUI instead of the command line
+
+`Scripts/OBJ_to_POV_GUI.m` is a small standalone window wrapping the same `Convert_OBJ_to_POV.m` call above, for converting a `.obj` file without writing any MATLAB code:
+
+```matlab
+addpath('RaySAR'); addpath('Scripts');
+OBJ_to_POV_GUI
+```
+
+1. **Browse...** next to ".obj file" — pick the model to convert.
+2. **Browse...** next to "Result folder" — pick (or create) the folder to save the converted scene into.
+3. Click **Convert**. The output `.pov` filename is derived from the `.obj` filename (e.g. `desert.obj` → `desert.pov`) and written into that folder. Status text reports the finished path, or the error message if conversion fails.
+
+It only exposes the file-in/folder-out flow — none of `Convert_OBJ_to_POV.m`'s advanced options (`up_axis`, `look_at`, `ground_finish`, etc.) are in the GUI. If a model needs those (see the `up_axis`/`look_at` notes above), call the script directly instead.
 
 ---
 
