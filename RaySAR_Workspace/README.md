@@ -35,6 +35,8 @@ scene (.pov)        (pvengine.exe)       signal data into         degrade the HR
 
 The result of running all four stages once: one `HR.png` and several `LR_<tier>.png` files, pixel-aligned, ready to be a training pair.
 
+**Stage 5 (optional, and more realistic) — form the image the way a radar does.** Stages 3 and 4 above stop at a reflectivity map and then fake the low-resolution version by blurring it. Part 4 of this README adds the radar signal chain that RaySAR leaves out, which produces images with real speckle, real sidelobes, and LR versions made by collecting less radar data instead of blurring.
+
 ---
 
 ## Part 2 — Setup
@@ -99,3 +101,70 @@ Degrade_To_LR('path/to/HR_image.jpg', 'path/to/output_folder', tiers);
 ```
 
 Each `tiers` entry is one severity level: `scale` is the downsampling factor, `looks` controls how noisy the speckle is (1 look is the noisiest, most realistic single-look SAR speckle), `blur_sigma` is how much blur to apply before downsampling.
+
+---
+
+## Part 4 — Realistic SAR images: adding the radar signal chain
+
+### Why this stage exists
+
+RaySAR is a **reflectivity map** simulator, not a radar simulator. It traces rays, records where the energy lands in the azimuth-range plane, and bins it into pixels. It never transmits a waveform, never flies a synthetic aperture, never produces raw data, and never runs an image formation algorithm. It goes straight from geometry to picture.
+
+It helps to separate two layers of physics:
+
+| Layer | What it decides | RaySAR |
+|---|---|---|
+| Scattering | how much energy returns, and from where | approximated geometrically, and validated against real urban SAR |
+| Imaging | how the radar turns those returns into a picture | **absent** |
+
+Everything that makes RaySAR output look unlike real SAR (too clean, no speckle, no star-shaped bright points) belongs to the second layer. This stage supplies it, following Gorham and Moore, *SAR image formation toolbox for MATLAB*, SPIE Vol. 7699 (2010).
+
+### What is taken from that paper
+
+| From the paper | Used for |
+|---|---|
+| Eq. (5) signal model | simulating what the receiver measures from each scatterer |
+| Eqs. (4), (6) differential range | geometry of each pulse, motion compensated to the scene centre |
+| Eq. (7), (9) alias-free scene size | checking the scene fits the collection, warns if not |
+| Eq. (8) range resolution, c/2B | sets how fine the image is in range |
+| Eq. (10) cross-range resolution, lambda/2*theta_a | sets how fine the image is in azimuth |
+| Eqs. (20), (21) range profile via `ifft` | fast image formation |
+| Eq. (22) image as a sum over pulses | the backprojection itself |
+| Appendix A.1, A.2 | `mfBasic.m` and `bpBasic.m`, used as published |
+
+### The chain
+
+```
+RaySAR ray tracing  ->  Contributions.txt         (Stage 2, unchanged)
+contributions       ->  point scatterers          Contributions_To_Scatterers.m
+scatterers          ->  raw radar data            Synth_PhaseHistory.m   (Eq. 5)
+raw data            ->  focused image             bpBasic.m              (Eqs. 21, 22)
+less raw data       ->  genuinely coarser images  Make_HR_LR_Pairs.m
+```
+
+Two design points matter:
+
+- **Amplitude comes from RaySAR, phase does not.** RaySAR folds the propagation phase into its coherent sum because it has no propagation model. Here the forward model derives that phase from the geometry, so reusing RaySAR's would count it twice. Each cell instead gets a random phase, the standard model of a surface that is rough at the wavelength scale. That phase diversity is what produces speckle, rather than noise multiplied on afterwards.
+- **LR images are formed from less data, not by blurring.** The HR image uses the full bandwidth and the full aperture. Each LR image is formed from a centred subset of the same raw data: half the bandwidth and half the aperture gives twice the resolution cell in both directions. The point spread function broadens correctly, the sidelobes move, and the speckle changes on its own. Every image is formed on the same pixel grid, so pairs are aligned by construction.
+
+### Running it
+
+```matlab
+cd('SAR_Imaging')
+run_street01_sar          % uses Scenes/Contributions.txt from Stage 2
+```
+
+Output lands in `SAR_Imaging/results/Street_01/`: `HR.png` plus one `LR_<tier>.png` per tier. On the Street_01 scene the whole stage takes about a minute.
+
+### Validation
+
+| Test | Result |
+|---|---|
+| `test_paper_fig1.m` reproduces the paper's Figure 1 | peaks land exactly on the three targets; measured resolution 0.249 m range and 0.295 m cross-range against 0.250 and 0.286 predicted by Eqs. (8) and (10) |
+| matched filter vs backprojection, two independent algorithms | magnitude correlation 1.0000 |
+| `test_forward_model.m`, fast model vs the exact Eq. (5) sum | 0.26 percent relative difference, correlation 0.999997 |
+| Street_01 resolution tiers actually achieved | 0.30, 0.60, 1.20, 2.39 m, halving as the equations require |
+
+### What this does not fix
+
+Only the imaging layer changes. Scattering amplitudes still come from RaySAR's geometric ray tracing, so there is still no frequency-dependent or material-dependent scattering, no Bragg scattering (a sea surface remains unrealistic), no volume scattering (a forest remains unrealistic), and no polarimetry. The honest description of this work is that RaySAR supplies validated scattering geometry, and this stage adds the SAR signal chain it omits.
