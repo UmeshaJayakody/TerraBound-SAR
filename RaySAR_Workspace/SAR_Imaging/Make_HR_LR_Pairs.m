@@ -1,4 +1,4 @@
-function out = Make_HR_LR_Pairs(data, x_extent, y_extent, pix, tiers, out_dir)
+function out = Make_HR_LR_Pairs(data, x_extent, y_extent, pix, tiers, out_dir, top_down)
 % Produces an HR image and matching LR images the way a radar actually
 % produces them: by collecting less data.
 %
@@ -21,8 +21,11 @@ function out = Make_HR_LR_Pairs(data, x_extent, y_extent, pix, tiers, out_dir)
 %   factor  how much coarser, e.g. 2 = half the bandwidth and half the
 %           aperture, so twice the resolution cell in both directions
 %
+% top_down: orientation of the saved PNGs, see Save_SAR_Image (default true)
+%
 % Returns out.hr (complex HR image) and out.lr{i}, plus the grids.
 
+if nargin < 7 || isempty(top_down), top_down = true; end
 if exist(out_dir, 'dir') ~= 7, mkdir(out_dir); end
 
 K = size(data.phdata, 1);
@@ -38,7 +41,7 @@ hr = Form_SAR_Image(data, x_extent, y_extent, pix);
 % percentile rather than the peak, for the reason given in Save_SAR_Image.
 v = sort(abs(hr.im_final(:)));
 ref = v(max(1, round(0.995*numel(v))));
-Save_SAR_Image(hr.im_final, fullfile(out_dir, 'HR.png'), -35, ref);
+Save_SAR_Image(hr.im_final, fullfile(out_dir, 'HR.png'), -35, ref, top_down);
 out.hr = hr.im_final;
 out.x_mat = hr.x_mat;
 out.y_mat = hr.y_mat;
@@ -72,7 +75,7 @@ for i = 1:numel(tiers)
         (data.theta_a*(Np_lr - 1)/(Np - 1))*180/pi);
 
     lr = Form_SAR_Image(d, x_extent, y_extent, pix);
-    Save_SAR_Image(lr.im_final, fullfile(out_dir, sprintf('LR_%s.png', t.name)), -35, ref);
+    Save_SAR_Image(lr.im_final, fullfile(out_dir, sprintf('LR_%s.png', t.name)), -35, ref, top_down);
     out.lr{i} = lr.im_final;
     out.lr_res(i, :) = [lr.dr lr.dx];
 end

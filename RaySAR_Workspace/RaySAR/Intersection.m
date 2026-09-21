@@ -55,6 +55,9 @@ function Intersection_OpeningFcn(hObject, eventdata, handles, varargin)
 % Choose default command line output for Intersection
 handles.output = hObject;
 
+% These windows were laid out in the default light colours
+Light_Theme(hObject);
+
 % Update handles structure
 guidata(hObject, handles);
 

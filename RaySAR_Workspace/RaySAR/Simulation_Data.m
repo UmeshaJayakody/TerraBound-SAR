@@ -55,6 +55,9 @@ function Simulation_Data_OpeningFcn(hObject, eventdata, handles, varargin)
 % Choose default command line output for Simulation_Data
 handles.output = hObject;
 
+% These windows were laid out in the default light colours
+Light_Theme(hObject);
+
 % Update handles structure
 guidata(hObject, handles);
 
@@ -707,16 +710,20 @@ end
 
 h = waitbar(0, 'Rendering... this can take a while for large scenes.', 'Name', 'RaySAR render');
 
-startdir = pwd;
-cd(model_path);
-cmd = ['pvengine.exe /EXIT +I"', pov_file, '" +W1000 +H1000 +L"', include_path, '"'];
-[status, cmdout] = system(cmd);
-cd(startdir);
+% Render_POV (in Scripts/) runs the engine with its own windows hidden and
+% its "Use Editor" prompt turned off, so nothing pops up while it works.
+addpath(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'Scripts'));
+render_error = '';
+try
+    Render_POV(pov_file, model_path);
+catch err
+    render_error = err.message;
+end
 
 close(h);
 
-if status == 0 && exist(contrib_path, 'file') == 2
+if isempty(render_error) && exist(contrib_path, 'file') == 2
     msgbox(['Render complete. Contributions.txt written to ', model_path], 'Render finished');
 else
-    errordlg(['Render failed -- no Contributions.txt was produced. Engine output: ', cmdout], 'Render error');
+    errordlg(['Render failed -- no Contributions.txt was produced. ', render_error], 'Render error');
 end

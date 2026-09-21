@@ -61,6 +61,13 @@ cd(startdir);
 % Choose default command line output for Maps
 handles.output = hObject;
 
+% These windows were laid out in the default light colours
+Light_Theme(hObject);
+
+% Panel for the realistic SAR image chain (SAR_Imaging). Built here rather
+% than in Maps.fig, which is left as GUIDE saved it.
+handles = add_sar_panel(hObject, handles);
+
 % Update handles structure
 guidata(hObject, handles);
 
@@ -1389,3 +1396,221 @@ function store_image_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % Hint: get(hObject,'Value') returns toggle state of store_image
+
+
+%--------------------------------------------------------------------------
+% Realistic SAR image panel
+%
+% Runs the radar signal chain of SAR_Imaging (simulated raw data, then
+% backprojection) on the reflection contributions loaded with "Load data",
+% and writes an HR image plus lower-resolution images formed from less radar
+% data. Everything below is added to the window from code, so Maps.fig
+% itself is unchanged.
+
+
+function handles = add_sar_panel(fig, handles)
+% Widens the window and adds the panel to the right of the existing settings.
+
+% Fonts are copied from the existing controls. Colours are deliberately
+% left at their defaults so the panel follows MATLAB's light or dark theme
+% like the rest of the window; setting them explicitly would not.
+ref = handles.uipanel9;
+fn = get(handles.text2,'FontName');
+fs = get(handles.text2,'FontSize');
+
+left = 112; width = 60;
+set(fig,'Units','characters');
+fp = get(fig,'Position');
+fp(3) = left + width + 5.6;
+set(fig,'Position',fp);
+
+pnl = uipanel('Parent',fig,'Units','characters','Position',[left 1 width 53.84], ...
+    'Title','Realistic SAR image','Tag','sar_panel','FontName',get(ref,'FontName'), ...
+    'FontSize',get(ref,'FontSize'));
+
+txt = @(pos,str) uicontrol('Parent',pnl,'Style','text','Units','characters','Position',pos, ...
+    'String',str,'FontName',fn,'FontSize',fs,'HorizontalAlignment','left');
+edt = @(pos,str,tip) uicontrol('Parent',pnl,'Style','edit','Units','characters','Position',pos, ...
+    'String',str,'FontName',fn,'FontSize',fs, ...
+    'HorizontalAlignment','left','TooltipString',tip);
+
+txt([3 42.2 54 8.6], ['Simulates the radar signal from the loaded data and focuses it into ' ...
+    'a SAR image (backprojection). The lower-resolution images are formed from less ' ...
+    'radar data, not blurred. Uses the Top Down and Bounce level settings on the left.']);
+
+txt([3 38.4 30 1.8], 'Bandwidth [MHz]');
+handles.sar_bw = edt([36 38.1 16 2.1], '500', ...
+    'Sets the HR resolution, c / (2 x bandwidth). More bandwidth is finer, and slower.');
+set(handles.sar_bw,'Callback',@(h,e) sar_bw_Callback(h, e, guidata(h)));
+handles.sar_res = txt([3 35.6 54 1.8], '');
+set_sar_resolution(handles);
+
+txt([3 31.6 30 1.8], 'Lower-resolution factors');
+handles.sar_factors = edt([36 31.3 16 2.1], '2 4 8', ...
+    'How many times coarser each lower-resolution image is. Leave empty for the HR image only.');
+txt([3 28.8 54 1.8], 'e.g. 2 4 8 = 2x, 4x and 8x coarser than HR');
+
+txt([3 24.8 30 1.8], 'Speckle seed');
+handles.sar_seed = edt([36 24.5 16 2.1], '1', ...
+    'Same seed, same speckle. Change it for a different realisation of the same scene.');
+
+txt([3 20.8 54 1.8], 'Output folder');
+handles.sar_folder = edt([3 18.2 38 2.1], '', ...
+    'Empty: a SAR_Results folder inside the object model folder.');
+uicontrol('Parent',pnl,'Style','pushbutton','Units','characters','Position',[43 18.0 14 2.5], ...
+    'String','Browse...','FontName',fn,'FontSize',fs, ...
+    'Callback',@(h,e) sar_browse_Callback(h, e, guidata(h)));
+
+handles.sar_run = uicontrol('Parent',pnl,'Style','pushbutton','Units','characters', ...
+    'Position',[3 11.2 54 4.6],'String','Create SAR images','FontName',get(handles.go,'FontName'), ...
+    'FontSize',get(handles.go,'FontSize'),'Callback',@(h,e) sar_run_Callback(h, e, guidata(h)));
+
+handles.sar_status = txt([3 1.6 54 8.6], 'Load data, then click Create SAR images.');
+
+
+function set_sar_resolution(handles)
+% Shows the HR resolution the bandwidth gives
+bw = str2double(get(handles.sar_bw,'String'))*1e6;
+if isnan(bw) || bw <= 0
+    set(handles.sar_res,'String','Enter a bandwidth in MHz.');
+else
+    set(handles.sar_res,'String',sprintf('HR resolution: %.2f m in range and cross-range', 299792458/(2*bw)));
+end
+
+
+function sar_bw_Callback(hObject, eventdata, handles)
+set_sar_resolution(handles);
+
+
+function sar_browse_Callback(hObject, eventdata, handles)
+global Model_path;
+start = get(handles.sar_folder,'String');
+if isempty(start), start = Model_path; end
+if isempty(start), start = pwd; end
+d = uigetdir(start,'Folder for the SAR images');
+if d ~= 0
+    set(handles.sar_folder,'String',d);
+end
+
+
+function sar_status(handles, str)
+if ishandle(handles.sar_status)
+    set(handles.sar_status,'String',strsplit(str,newline));
+    drawnow;
+end
+
+
+function sar_run_Callback(hObject, eventdata, handles)
+% Runs the chain on the loaded contributions
+
+global Az Ra El Intens Tr_L Model_path;
+
+if size(Az,1) == 0
+    uiwait(errordlg('Please load ray tracing data first (reflection contributions).','Reflection Contributions'));
+    return
+end
+
+% SAR_Imaging sits next to the RaySAR folder
+sar_dir = fullfile(fileparts(fileparts(mfilename('fullpath'))),'SAR_Imaging');
+if exist(sar_dir,'dir') == 7
+    addpath(sar_dir);
+end
+if exist('Run_SAR_From_Contributions','file') ~= 2
+    uiwait(errordlg(['Could not find the SAR_Imaging folder (looked in ' sar_dir ').'],'SAR image'));
+    return
+end
+
+% Settings
+bw = str2double(get(handles.sar_bw,'String'))*1e6;
+if isnan(bw) || bw < 10e6 || bw > 5e9
+    uiwait(errordlg('The bandwidth must be between 10 and 5000 MHz.','SAR image'));
+    return
+end
+
+factors = sscanf(strrep(get(handles.sar_factors,'String'),',',' '),'%f')';
+if any(factors <= 1) || any(factors > 32)
+    uiwait(errordlg('The factors must be numbers above 1 and up to 32, e.g. 2 4 8.','SAR image'));
+    return
+end
+factors = unique(factors);
+
+seed = str2double(get(handles.sar_seed,'String'));
+if isnan(seed) || seed < 0 || seed ~= round(seed) || seed >= 2^32
+    uiwait(errordlg('The seed must be a whole number, 0 or more.','SAR image'));
+    return
+end
+
+opts.bw = bw;
+opts.factors = factors;
+opts.seed = seed;
+opts.top_down = get(handles.Top_Down,'Value') == 1;
+opts.bounce_max = inf;
+bl = str2double(get(handles.Bounce_Level,'String'));   % 'Max' gives NaN
+if ~isnan(bl)
+    opts.bounce_max = bl;
+end
+
+out_dir = strtrim(get(handles.sar_folder,'String'));
+if isempty(out_dir)
+    base = Model_path;
+    if isempty(base), base = pwd; end
+    out_dir = fullfile(base,'SAR_Results');
+    set(handles.sar_folder,'String',out_dir);
+end
+if exist(fullfile(out_dir,'HR.png'),'file') == 2
+    if ~strcmp(questdlg(['There are already SAR images in ' out_dir '. Replace them?'], ...
+            'SAR image','Replace','Cancel','Cancel'),'Replace')
+        return
+    end
+end
+
+opts.progress = @(s) sar_status(handles, s);
+opts.confirm = @(s) strcmp(questdlg(s,'SAR image','Continue','Cancel','Continue'),'Continue');
+
+set(handles.sar_run,'Enable','off');
+sar_status(handles,'Starting ...');
+try
+    res = Run_SAR_From_Contributions([Az Ra El Intens Tr_L], out_dir, opts);
+catch err
+    if ishandle(handles.sar_run), set(handles.sar_run,'Enable','on'); end
+    sar_status(handles,['Failed: ' err.message]);
+    uiwait(errordlg(err.message,'SAR image'));
+    return
+end
+if ishandle(handles.sar_run), set(handles.sar_run,'Enable','on'); end
+
+if res.cancelled
+    sar_status(handles,'Cancelled.');
+    return
+end
+
+pairs = [res.names; num2cell(res.resolution(:,1)')];
+names = sprintf('%s %.2f m, ',pairs{:});
+sar_status(handles,sprintf('Done in %.0f s: %d x %d pixels.\nRange resolution: %s\nSaved in %s', ...
+    res.seconds, res.image_size(2), res.image_size(1), names(1:end-2), res.out_dir));
+sar_show_results(res);
+
+
+function sar_show_results(res)
+% One window with the HR image and every LR image side by side
+old = findobj('Type','figure','Tag','SAR_Result');
+close(old);
+
+n = numel(res.files);
+cols = min(n,3);
+rows = ceil(n/cols);
+f = figure('Name','Realistic SAR images','NumberTitle','off','Tag','SAR_Result');
+set(f,'Units','pixels');
+p = get(f,'Position');
+set(f,'Position',[p(1) max(40,p(2)-(rows-1)*150) 430*cols 440*rows]);
+for i = 1:n
+    subplot(rows,cols,i);
+    image(imread(res.files{i}));
+    colormap(gray(256));
+    axis image off;
+    if i == 1
+        title(sprintf('HR: %.2f x %.2f m',res.resolution(i,1),res.resolution(i,2)));
+    else
+        title(sprintf('LR %s: %.2f x %.2f m',res.names{i},res.resolution(i,1),res.resolution(i,2)));
+    end
+end

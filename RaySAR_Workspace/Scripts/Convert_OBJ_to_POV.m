@@ -1,4 +1,4 @@
-function Convert_OBJ_to_POV(obj_path, out_pov_path, opts)
+function info = Convert_OBJ_to_POV(obj_path, out_pov_path, opts)
 % Converts a Wavefront .obj mesh into a RaySAR-ready .pov scene: parses
 % vertices/faces from the OBJ, fan-triangulates any non-triangular faces,
 % emits a POV-Ray mesh2{} block, and wraps it with the same
@@ -25,6 +25,13 @@ function Convert_OBJ_to_POV(obj_path, out_pov_path, opts)
 %   look_at       [x y z] world-space point (post ground-shift) to center
 %                 the camera on (default: [0 0 0], i.e. the whole model) --
 %                 use to zoom into one region of a large scene
+%   center        true centres the camera on the middle of the model's
+%                 footprint instead of on [0 0 0], for models that are not
+%                 built around the origin (default: false). Ignored if
+%                 look_at is given.
+%
+% Returns info with bbox ([xmin xmax; ymin ymax; zmin zmax] after the ground
+% shift), look_at and the number of mesh2 objects written.
 
 if nargin < 3, opts = struct(); end
 g = @(name,defv) get_opt(opts,name,defv);
@@ -42,7 +49,10 @@ fprintf('Parsing %d vertices...\n', n_v);
 % vectorized sscanf call instead of a per-line loop (essential for large,
 % imported meshes with hundreds of thousands of vertices; a per-line loop
 % that's fine for a few thousand vertices becomes impractically slow here).
-vvals = sscanf(strjoin(v_lines, newline), 'v %f %f %f');
+% (The trailing space in each format lets sscanf step over the newline
+% between lines; without it, it stops after the first line and this path
+% never succeeds.)
+vvals = sscanf(strjoin(v_lines, newline), 'v %f %f %f ');
 if numel(vvals) == 3*n_v
     V = reshape(vvals, 3, n_v)';
 else
@@ -62,7 +72,7 @@ fprintf('Parsing %d faces...\n', n_f);
 
 % Fast path: if every face is already a plain triangle "f a/x/y b/x/y c/x/y",
 % parse the whole block in one vectorized sscanf call (no per-line loop).
-fvals = sscanf(strjoin(f_lines, newline), 'f %d/%d/%d %d/%d/%d %d/%d/%d');
+fvals = sscanf(strjoin(f_lines, newline), 'f %d/%d/%d %d/%d/%d %d/%d/%d ');
 if numel(fvals) == 9*n_f
     M = reshape(fvals, 9, n_f)';
     tri = double(M(:, [1 4 7]));
@@ -135,18 +145,16 @@ ground = g('ground', true);
 % world-space [x,y,z] of that region's center. Camera location keeps the
 % same <0,H,-H>-relative-to-look_at offset that gives the 45 deg incidence,
 % just translated to the new target.
-look_at = g('look_at', [0 0 0]);
-Lx = look_at(1); Ly = look_at(2); Lz = look_at(3);
+if g('center', false)
+    default_look = [mean(xr) 0 mean(zr)];
+else
+    default_look = [0 0 0];
+end
+look_at = g('look_at', default_look);
 
 fid = fopen(out_pov_path,'w');
-fprintf(fid, '#version 3.5;\n\n#include "colors.inc"\n#include "finish.inc"\n\n');
-fprintf(fid, 'global_settings{SAR_Output_Data 1 SAR_Intersection 0}\n\n');
-fprintf(fid, '// Converted from %s (Convert_OBJ_to_POV.m)\n\n', obj_path);
-
-fprintf(fid, '#declare Cam = camera {\n  orthographic\n  location <%g,%g,%g>\n  look_at <%g,%g,%g>\n  right %g*x\n  up %g*y\n}\n\ncamera{Cam}\n\n', ...
-    Lx, Ly+cam_height, Lz-cam_height, Lx, Ly, Lz, view_extent(1), view_extent(2));
-fprintf(fid, 'light_source {\n  <%g,%g,%g>\n  color rgb <1,1,1>\n  parallel\n  point_at <%g,%g,%g>\n}\n\n', ...
-    Lx, Ly+cam_height, Lz-cam_height, Lx, Ly, Lz);
+fprintf(fid, '%s', POV_Header(sprintf('Converted from %s (Convert_OBJ_to_POV.m)', obj_path), ...
+    look_at, 0, 45, cam_height*sqrt(2), view_extent));
 
 if ground
     ground_finish = g('ground_finish', 'finish {reflection {0.3} ambient 0 diffuse 0.15 specular 0}');
@@ -206,6 +214,9 @@ end
 fclose(fid);
 fprintf('Wrote %s (%d mesh2 objects, max %d vertices each)\n', out_pov_path, n_chunks, max_verts);
 
+info.bbox = [xr; yr; zr];
+info.look_at = look_at;
+info.n_meshes = n_chunks;
 end
 
 function write_mesh_chunk(fid, V, globalIdxList, localTris, finish_str)

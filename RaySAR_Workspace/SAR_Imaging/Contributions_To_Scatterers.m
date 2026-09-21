@@ -4,6 +4,9 @@ function sc = Contributions_To_Scatterers(contrib_path, opts)
 % real SAR imaging: RaySAR says where energy comes from and how much, this
 % hands that over to a model of an actual radar collection.
 %
+% contrib_path is either the path to Contributions.txt or the matrix already
+% loaded from it (columns as below).
+%
 % RaySAR's columns are: Az, Ra, El, Intens, Tr_L (bounce level), Sp
 % (specular flag). Az, Ra and El are the contribution's azimuth,
 % slant-range and elevation coordinates in the sensor frame, which is the
@@ -29,6 +32,13 @@ function sc = Contributions_To_Scatterers(contrib_path, opts)
 %   phase       'random' (default) or 'none' for no speckle
 %   seed        seed for the random phases, for repeatability (default 0)
 %   max_scatterers  warn above this many cells              (default 5e5)
+%   extent_from 'all' (default) or 'single'. The scene is cut to robust
+%               bounds of the contributions. With 'single' the bounds come
+%               from single-bounce returns only, which are points on
+%               surfaces seen directly and so fill exactly the sensor's
+%               frame. Multi-bounce returns can land hundreds of metres out
+%               and stretch the scene, which matters for small windows cut
+%               from a large model; anything outside the bounds is dropped.
 %
 % Returns sc with fields x, y, z, amp (column vectors, scene-centred),
 % plus sc.centre = [az0 ra0 el0] and sc.extent = [azimuth range] in m.
@@ -40,9 +50,16 @@ trim_pct   = get_opt(opts, 'trim_pct', 0.5);
 phase_mode = get_opt(opts, 'phase', 'random');
 seed       = get_opt(opts, 'seed', 0);
 max_sc     = get_opt(opts, 'max_scatterers', 5e5);
+extent_from = get_opt(opts, 'extent_from', 'all');
 
-R = load(contrib_path);
-fprintf('Loaded %d signal contributions from %s\n', size(R,1), contrib_path);
+if isnumeric(contrib_path)
+    % Already in memory, e.g. the data the RaySAR GUI has loaded
+    R = contrib_path;
+    fprintf('Using %d signal contributions already loaded\n', size(R,1));
+else
+    R = load(contrib_path);
+    fprintf('Loaded %d signal contributions from %s\n', size(R,1), contrib_path);
+end
 Az = R(:,1); Ra = R(:,2); El = R(:,3); Intens = R(:,4); Tr_L = R(:,5);
 clear R
 
@@ -56,7 +73,11 @@ end
 % stretch the scene over hundreds of metres. Same robust trim the existing
 % pipeline uses before building a reflectivity map.
 pct = @(v, p) v(max(1, min(numel(v), round(p/100*numel(v)))));
-as = sort(Az); rs = sort(Ra);
+if strcmpi(extent_from, 'single') && any(Tr_L == 1)
+    as = sort(Az(Tr_L == 1)); rs = sort(Ra(Tr_L == 1));
+else
+    as = sort(Az); rs = sort(Ra);
+end
 a_lo = pct(as, trim_pct); a_hi = pct(as, 100 - trim_pct);
 r_lo = pct(rs, trim_pct); r_hi = pct(rs, 100 - trim_pct);
 clear as rs
