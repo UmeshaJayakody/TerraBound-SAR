@@ -205,8 +205,8 @@ Every step has a plain-language explanation on screen and a default for every se
 
 | Step | What you choose |
 |---|---|
-| 1 Object | the `.obj` file; the folder to save in; which way is up (Y or Z); the object's surface and the ground (presets from the scenes already made, or your own POV-Ray finish); **Check model** shows the object's size |
-| 2 What to create | **Complete set** (recommended), **One full image**, or **Views around the object** |
+| 1 Object | the `.obj` file; the folder to save in; which way is up and what units the file uses (both automatic, see *Any object, any size* below); the object's surface and the ground (presets from the scenes already made, or your own POV-Ray finish). The window reads the file as soon as you choose it and says what it found: size, up direction, units |
+| 2 What to create | **Complete set** (recommended), **One full image**, **Views around the object**, **Choose views on a map**, or **Choose views in Blender** (see Part 6) |
 | 3 Views | see below |
 | 4 Radar and images | resolution (fixed, the same for every object, or automatic from the object's size); the lower-resolution versions (`2 4 8` = 2x, 4x and 8x coarser, or none); speckle seed; highest bounce level; rays per image pixel; image orientation; whether to keep the complex images and the ray tracer's files; whether to redo finished views |
 | 5 Run | a summary, **Start** and **Stop**, a progress bar, a table of views, and a preview of the HR and lower-resolution images of any view |
@@ -226,7 +226,7 @@ Random choices are repeatable: the same settings and seed give the same views.
 
 **Every view gets an HR image and three lower-resolution versions by default** (2x, 4x and 8x coarser, from less radar data, not blurring). That is the `2 4 8` in step 4. If you empty that box, only HR images are made, and the window says so in capitals.
 
-When a run finishes, the window opens on **Results** by itself. It shows every image as a thumbnail, 12 to a page, with a filter (all views, whole-scene views, partial views, side views of 60 degrees or more, views from above, failed views), and a larger picture of the one you click together with all its lower-resolution versions. **Open another dataset...** loads a dataset made earlier, so you can come back to it any time.
+When a run finishes, the window opens on **Results** by itself, showing **only the images of that run**, so the many earlier images that a folder collects over time (every Blender capture goes into the same folder, for one) are not mixed in. The **History** button adds the older images, newest first with the date each was made, and **Latest render only** goes back. (A run records which views it handled in `last_run.json`; for a folder made before that, the latest render is taken to be the newest views made one after another.) Downloading gives what is shown. Results shows the images as thumbnails, 12 to a page, with a filter (all views, whole-scene views, partial views, side views of 60 degrees or more, views from above, failed views), and a larger picture of the one you click together with all its lower-resolution versions. **Open another dataset...** loads a dataset made earlier, so you can come back to it any time.
 
 **Download...** copies the images to a place you choose, a folder or one `.zip` file. You choose:
 
@@ -248,7 +248,7 @@ Files with the same names in the chosen place are replaced.
 ```
 
 - With the default **fixed** resolution (500 MHz, 0.30 m), every image of every object has the same resolution and pixel size, so the whole data set is comparable. A smaller window is simply a smaller image. With **automatic**, an object's whole scene comes out about a chosen number of pixels across, and every view of that object shares that resolution.
-- **Large objects.** A view whose image would be very large at the chosen resolution (more than 2000 pixels across) is left out and reported, instead of running for hours; use smaller windows or a coarser resolution for those. Very tall low-angle views are long because the ground stretches out along the range.
+- **Large objects.** A view whose image would be very large at the chosen resolution (more than 2000 pixels across) is left out and reported, instead of running for hours; use smaller windows or a coarser resolution for those. The window says so in step 3 before you start, for the whole-scene views of a large object at a fixed resolution. Very tall low-angle views are long because the ground stretches out along the range.
 - HR and LR images of a view are pixel aligned. LR images come from less radar data (Part 4), not from blurring.
 - Each view gets its own speckle seed (the seed, then seed + 1, and so on).
 - A run that is stopped, or interrupted, carries on where it stopped: views already done with the same settings are skipped. Failed views are listed in `dataset_index.csv` with the reason, and are retried by starting again.
@@ -264,10 +264,24 @@ opts.coverage = 3;                     % partial views: each part seen about 3 t
 opts.window_m = [40 100];              % windows of 40 to 100 m
 opts.side_fraction = 0.35;             % 35 % of them look from a low side angle
 opts.bw = 500e6;                       % the same resolution on every object
-[index, notes] = Make_Multi_Angle_Dataset('object.obj', 'D:/dataset', opts);
+[index, notes, run] = Make_Multi_Angle_Dataset('object.obj', 'D:/dataset', opts);
 ```
 
-`help Make_Multi_Angle_Dataset` lists every option. It runs from `matlab -batch` with no display; this is how it was tested.
+Units and the up axis are automatic (`opts.scale = 'auto'`, `opts.up_axis = 'auto'`); give `opts.scale = 0.0254` or `opts.up_axis = 'z'` to set them yourself. `Analyze_OBJ('object.obj')` and `Resolve_Model` report what was found without making anything.
+
+`index` is the whole dataset folder, including views from earlier runs into the same folder; `run` is only the views this call made (or found already made), so it is the one to check for success. `help Make_Multi_Angle_Dataset` lists every option. It runs from `matlab -batch` with no display; this is how it was tested.
+
+### Any object, any size
+
+The software works out what an `.obj` file is, so a file from any program can be used as it is. Nothing has to be prepared or converted first.
+
+- **Any file size.** The file is read in blocks, so its text is never held in memory whole (only the vertex and triangle numbers are). Triangles, quads and larger polygons can be mixed, with or without texture and normal indices; larger polygons are cut into triangles. A 40 MB city (485 000 triangles) is read in about 6 s, and a 220 MB one of 3.8 million triangles in about 16 s.
+- **Which way is up.** A scene that is much wider than tall (a city, terrain, the sea) has its short axis up. Otherwise the axis that most of the surface faces is taken as up, and Y when that is unclear. Choose Y or Z yourself if it is wrong; the window says how it decided.
+- **Units.** Files do not say, except in a comment at the top when they are lucky (`File units = inches` from SketchUp, `centimeters` from Maya). That comment is used if it gives a believable size. If not, the first of metres, centimetres, millimetres, inches and feet that gives a believable size is used (a few metres to some tens of kilometres, and not taller than the highest mountain). A model too small for a radar is enlarged by a power of ten. Everything is then in metres, and the window shows the size it made. Set the units yourself if a guess is wrong. Castelia City, for example, says inches in its header, which makes it 6.9 km by 8.7 km and 697 m tall; taken as metres it would be 343 km across.
+- **Only what is in view is loaded.** A large scene is cut into small pieces, ordered by where they are, and each view loads only the pieces that can affect it: those in the straight tube of space between the window and the sensor, widened by a margin for bounced rays. A window on a 5.6 km city of 3.8 million triangles costs about what a window on a street does. Images are identical with and without this (checked pixel for pixel on the street scene).
+- **Views go where the object has something to show.** Random windows are placed on ground with structure on it (walls and steep slopes), not on bare ground or open water, and the number of views follows the amount of such ground, not the size of the bounding box. Castelia City covers 60 km² in its box, and about 2 km² of it has structure on it.
+- **Very large scenes at fixed resolution.** At 0.30 m, a scene of kilometres does not fit in one image, so its whole-scene views are left out and its windows are made; choose **Automatic** resolution in step 4 to get the whole scene at a coarser resolution (Castelia City: 32 m, about 500 pixels across, in under a minute).
+- If the converted scene was made with different choices (units, up, surface) or from an older version of the software, it is converted again, and the views made from it are made again.
 
 ### Things worth knowing
 
@@ -276,3 +290,62 @@ opts.bw = 500e6;                       % the same resolution on every object
 - **Windows and stray rays.** Each image is sized from the single-bounce returns, which fill the sensor's frame exactly. A few multi-bounce rays can land hundreds of metres away; sizing from all rays used to stretch small windows into mostly black images.
 - **One render at a time.** The engine allows one copy to run at a time, so views are made one after another. Small windows take about 10 to 20 s each and a whole scene about a minute.
 - **Server use.** The engine (`pvengine.exe`) is a Windows program, and MATLAB needs a full licence. A Windows machine running `matlab -batch` works as it is. A Linux server needs a Linux build of the RaySAR engine, or Wine, and either MATLAB or a port of `SAR_Imaging`.
+
+
+---
+
+## Part 6 — Choosing views by eye: on a map, or in Blender
+
+Instead of typing angles, you can choose each SAR image by looking at the object. There are two ways, both inside `SAR_Dataset_GUI` (step 2, pick the mode). Neither runs anything in the background: everything happens when you press a button.
+
+### On a map (no other program needed)
+
+Step 3 shows the object from above, north up. **Click** to put the window there, choose the direction, angle and size, and see the exact ground the picture will cover (the blue frame), with a triangle for where the radar sits. Set **A click sets** to *Where the radar sits* and a click chooses the direction instead. **Add this view** keeps it (orange on the map, listed below); do this as many times as you like.
+
+### In Blender
+
+Blender is optional, and needed only for this mode. It is found automatically if it is installed (a copy is in `D:\Apps\Blender` on this machine).
+
+1. In the window, choose **Choose views in Blender** (step 2). In step 3 click **Open Blender**. Blender opens on a top view of your object, with a **yellow box** on it.
+2. The yellow box is the window. Click it, then `G` moves it, `R` turns it (the small triangle is the side the radar is on) and `S` resizes it. The look **Angle** is a slider in the **SAR views** panel, which sits under the Transform box in the sidebar (press `N` if it is hidden). The panel shows the box's direction, angle, window size, centre and the size the image will be. Add more boxes with **Add the yellow window box**.
+3. Back in the window click **Capture**. There is **nothing to save or send**: when Blender is opened from the window, it keeps a small file (`sar_live.json`) up to date whenever the scene changes, so Capture takes the boxes exactly where they are now. If *Make the images right away* is ticked, it then makes the images and opens **Results**. (This uses a Blender event handler that runs only when something changes, not a timer.) A box that is far too big is reported instead, with the size to use.
+
+You can also press **Capture** inside Blender (SAR views panel). That makes the image of the selected camera (or of every SAR camera if none is selected) and shows it; Blender waits while MATLAB works, about a minute.
+
+To use the add-on on its own: **Edit > Preferences > Add-ons > Install...** and choose `Blender/sar_view_picker.py`.
+
+### How a box or a camera becomes a SAR view
+
+A yellow box: its centre is the centre of the window; the side its triangle points to (its own +Y axis) is where the radar sits; its width across is the window width; its length along that direction is the length of ground the view covers; the Angle slider is the look angle. A window has to be small enough for the radar's resolution (a 0.30 m resolution allows about 300 m across): the panel shows the image size, and a box that is far too big is refused with the reason.
+
+For people who prefer cameras, an orthographic camera named `SAR...` works too:
+
+| The camera | The SAR view |
+|---|---|
+| where its viewing line meets the ground (the lowest point of the model) | the **centre** of the window |
+| the angle between its viewing direction and straight down | the **incidence angle** (10 to 85 degrees) |
+| which side it looks from | the **direction**: 0 is the radar on the +Y side looking towards -Y, 90 on the +X side, 180 on the -Y side, 270 on the -X side |
+| its orthographic frame: Ortho Scale is the larger side, the render resolution's shape gives the other | the **window**, in metres |
+
+Roll and lens shift are ignored, because a radar frame always has its azimuth axis level. A camera that looks up or level, or at less than 10 or more than 85 degrees from straight down, is reported in the panel instead of being used.
+
+Like every image this pipeline makes, the SAR image has the radar's near side at the top, and the model is treated as a left-handed scene, so the picture is the left-right mirror of what the Blender camera shows. The position, direction and angle you choose are exactly what is used.
+
+The images are written like any other dataset: `<Save images in>/blender_scene/views/v001_<camera name>_az..._inc.../`. Views already done with the same settings are skipped, so adding a camera only makes the new one; if you change the model, everything is made again.
+
+### Without the window
+
+The add-on writes a plain views file and calls `Make_SAR_From_Blender`, so the same can be done by hand:
+
+```matlab
+Make_SAR_From_Blender('D:/sar_out/sar_views.json')
+```
+
+The file holds `obj` (the model, exported with Blender's default OBJ axes), `out_folder`, `bandwidth_mhz`, `factors`, and a list of `views`, each with `name`, `bearing_deg`, `incidence_deg`, `center_x`, `center_z`, `width_m` and `height_m`. `help Make_SAR_From_Blender` describes it.
+
+### What has been tested
+
+- **The geometry**: `python Blender/sar_view_picker.py --selftest` (cameras to views and back, agreement with the sensor position used by the MATLAB side, the four compass cases).
+- **In real Blender 5.2.2**: the add-on's buttons (add camera, Send views, Capture, Show) and its panel, with Blender's own camera maths giving the view that was asked for; the window's **Open Blender** (the object loads, a camera is added) and the views it brings back; and the whole MATLAB side, including skipping finished views and converting again when the model changes.
+- **The map picker**: clicks give the right centre and direction, and the views run through the normal pipeline.
+- **Capture reading the saved Blender file** was added last and has been checked in pieces, not yet end to end by hand; if it reports a problem, click **Send views to the SAR window** in Blender and Capture again.

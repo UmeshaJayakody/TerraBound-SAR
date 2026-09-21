@@ -5,8 +5,9 @@ function SAR_Dataset_GUI
 % Six steps, each explained on screen:
 %   1 Object            the .obj file, where to save, how to treat the model
 %   2 What to create    the complete set (whole scene from several sides plus many
-%                       partial and side views), one full image, or views around
-%                       the object
+%                       partial and side views), one full image, views around the
+%                       object, views you pick by eye on a map of the object, or
+%                       views chosen in Blender (Open Blender, then Capture)
 %   3 Views             directions, incidence angles, and how much of the
 %                       scene each image covers
 %   4 Radar and images  resolution, lower-resolution versions, other options
@@ -61,10 +62,25 @@ root_dir = '';
 view_rows = {};            % the info of every view, for the results table
 frozen = [];               % controls switched off while a run is going
 model_size = [];           % [width height depth] of the chosen object in m, once read
-model_key = '';            % which file and up-axis model_size belongs to
+model_key = '';            % which file, up axis and units model_size belongs to
+analysis = [];             % what Analyze_OBJ found in the chosen file (kept, so a change of choice costs nothing)
+analysis_file = '';        % the file it belongs to, and when that file was written
+analysis_stamp = [];
+resolved = [];             % the up axis and units in use, from Resolve_Model, and what they make of the file
 planned_n = 0;             % how many views the run has said it will make
+model_pts = [];            % a sample of the object's vertices [x height z], for the map
+map_key = '';              % which object the map was last set up for
+picks = zeros(0, 6);       % views picked on the map: [direction angle centre_x centre_z width height]
+pick_sel = 0;              % the selected row of the list of picked views
+bl_picks = zeros(0, 6);    % views captured from Blender: [direction angle centre_x centre_z width height]
+bl_names = {};             % the cameras they came from
+blender_obj = '';          % the model Blender exported, which those views are relative to
 res_root = '';             % the dataset folder shown in Results
-res_views = [];            % its views, one struct each
+res_all = [];              % every view in that folder, one struct each, newest first
+res_views = [];            % the ones shown: the latest render, or all of them (history)
+res_scope = 'run';         % 'run': only the latest render; 'all': the history too
+res_loaded = '';           % the folder res_all was read from
+last_run = struct('root', '', 'ids', {{}});   % the views the last run in this window handled
 res_shown = [];            % indices into res_views that the filter lets through
 res_page = 1;
 res_sel = 0;               % index into res_views of the selected view
@@ -130,9 +146,9 @@ at(save_btn, 1, 1); at(load_btn, 1, 2); at(back_btn, 1, 4); at(next_btn, 1, 5);
 panels = gobjects(1, 6);
 
 % ============================ Step 1: Object ==================================
-g = step_grid(1, [10 4]);
+g = step_grid(1, [12 4]);
 g.ColumnWidth = {170, 250, '1x', 100};
-g.RowHeight = {30, 30, 8, 30, 30, 30, 30, 30, 30, 60};
+g.RowHeight = {30, 30, 8, 30, 30, 30, 30, 30, 30, 30, 30, 150};
 g.Padding = [8 8 8 8];
 row_label(g, 1, 'Object file (.obj)');
 obj_field = at(uieditfield(g, 'text', 'Editable', 'off', 'Tag', 'obj'), 1, [2 3]);
@@ -141,34 +157,45 @@ row_label(g, 2, 'Save images in');
 out_field = at(uieditfield(g, 'text', 'Tag', 'out', 'Value', fullfile(userpath_or_pwd(), 'SAR_Dataset')), 2, [2 3]);
 at(uibutton(g, 'push', 'Text', 'Browse...', 'ButtonPushedFcn', @(~, ~) browse_out()), 2, 4);
 row_label(g, 4, 'Which way is up');
-up_drop = at(uidropdown(g, 'Items', {'Y is up (most files)', 'Z is up (3ds Max exports)'}, 'ItemsData', {'y', 'z'}, 'Value', 'y', 'Tag', 'up'), 4, 2);
-row_hint(g, 4, 'If the object comes out lying on its side, switch this.');
-row_label(g, 5, 'Object surface');
+up_drop = at(uidropdown(g, 'Items', {'Automatic (recommended)', 'Y is up (most files)', 'Z is up (3ds Max exports)'}, ...
+    'ItemsData', {'auto', 'y', 'z'}, 'Value', 'auto', 'Tag', 'up', 'ValueChangedFcn', @(~, ~) model_choice_changed()), 4, 2);
+row_hint(g, 4, 'Found from the shape of the object. Change it only if the object comes out lying on its side.');
+row_label(g, 5, 'Units of the file');
+units_drop = at(uidropdown(g, 'Items', {'Automatic (recommended)', 'Metres', 'Centimetres', 'Millimetres', 'Inches', 'Feet', 'Kilometres', 'Other...'}, ...
+    'ItemsData', {'auto', '1', '0.01', '0.001', '0.0254', '0.3048', '1000', 'custom'}, 'Value', 'auto', 'Tag', 'units', ...
+    'ValueChangedFcn', @(~, ~) model_choice_changed()), 5, 2);
+row_hint(g, 5, 'Read from the file or judged from its size, so that it comes out at its real size in metres.');
+row_label(g, 6, 'Metres per unit (Other)');
+units_custom = at(uieditfield(g, 'numeric', 'Value', 1, 'Limits', [1e-9 1e9], 'LowerLimitInclusive', 'on', 'Tag', 'units_custom', ...
+    'Enable', 'off', 'ValueChangedFcn', @(~, ~) model_choice_changed()), 6, 2);
+row_label(g, 7, 'Object surface');
 mat_drop = at(uidropdown(g, 'Items', OBJ_MATERIALS(:, 1), 'ItemsData', 1:size(OBJ_MATERIALS, 1), 'Value', 1, 'Tag', 'material', ...
-    'ValueChangedFcn', @(~, ~) update_custom()), 5, 2);
-row_hint(g, 5, 'How mirror-like or rough the object is to the radar.');
-row_label(g, 6, 'Ground');
+    'ValueChangedFcn', @(~, ~) update_custom()), 7, 2);
+row_hint(g, 7, 'How mirror-like or rough the object is to the radar.');
+row_label(g, 8, 'Ground');
 gnd_drop = at(uidropdown(g, 'Items', GROUNDS(:, 1), 'ItemsData', 1:size(GROUNDS, 1), 'Value', 1, 'Tag', 'ground', ...
-    'ValueChangedFcn', @(~, ~) update_custom()), 6, 2);
-row_hint(g, 6, 'The flat surface under the object. The sea is a stylised mirror, not real sea scattering.');
-row_label(g, 7, 'Custom object surface');
-cust_obj = at(uieditfield(g, 'text', 'Tag', 'custom_obj', 'Enable', 'off', 'Placeholder', 'finish {reflection {0.4} ambient 0 diffuse 0.35 specular 0.5 roughness 0.01}'), 7, [2 3]);
-row_label(g, 8, 'Custom ground');
-cust_gnd = at(uieditfield(g, 'text', 'Tag', 'custom_ground', 'Enable', 'off', 'Placeholder', 'finish {reflection {0.3} ambient 0 diffuse 0.15 specular 0}'), 8, [2 3]);
-check_btn = at(uibutton(g, 'push', 'Text', 'Check model', 'Tag', 'check', 'ButtonPushedFcn', @(~, ~) check_model()), 9, 2);
-row_hint(g, 9, 'Optional: reads the file and shows how big the object is.');
-model_info = at(uilabel(g, 'Text', 'Use this to see whether "Which way is up" is right: the height it shows should be the object''s real height.', ...
-    'WordWrap', 'on', 'VerticalAlignment', 'top'), 10, [2 4]);
+    'ValueChangedFcn', @(~, ~) update_custom()), 8, 2);
+row_hint(g, 8, 'The flat surface under the object. The sea is a stylised mirror, not real sea scattering.');
+row_label(g, 9, 'Custom object surface');
+cust_obj = at(uieditfield(g, 'text', 'Tag', 'custom_obj', 'Enable', 'off', 'Placeholder', 'finish {reflection {0.4} ambient 0 diffuse 0.35 specular 0.5 roughness 0.01}'), 9, [2 3]);
+row_label(g, 10, 'Custom ground');
+cust_gnd = at(uieditfield(g, 'text', 'Tag', 'custom_ground', 'Enable', 'off', 'Placeholder', 'finish {reflection {0.3} ambient 0 diffuse 0.15 specular 0}'), 10, [2 3]);
+check_btn = at(uibutton(g, 'push', 'Text', 'Check model', 'Tag', 'check', 'ButtonPushedFcn', @(~, ~) check_model(true)), 11, 2);
+row_hint(g, 11, 'Reads the file again and shows what was found. This happens by itself when you choose a file.');
+model_info = at(uilabel(g, 'Text', {'Choose an object file. Any size of .obj file works: its up direction, its units and its size are worked out for you, and shown here.'}, ...
+    'WordWrap', 'on', 'VerticalAlignment', 'top', 'Tag', 'model_info'), 12, [2 4]);
 
 % ============================ Step 2: What to create ==========================
 g = step_grid(2, [3 1]);
-g.RowHeight = {112, 64, '1x'};
+g.RowHeight = {172, 64, '1x'};
 g.Padding = [8 8 8 8];
 mode_group = uibuttongroup(g, 'Title', '', 'BorderType', 'none', 'Tag', 'mode', 'SelectionChangedFcn', @(~, ~) mode_changed());
 at(mode_group, 1, 1);
-mode_btn(1) = uiradiobutton(mode_group, 'Text', 'Complete set (recommended)', 'Position', [10 82 300 22], 'Tag', 'mode1');
-mode_btn(2) = uiradiobutton(mode_group, 'Text', 'One full image', 'Position', [10 47 300 22], 'Tag', 'mode2');
-mode_btn(3) = uiradiobutton(mode_group, 'Text', 'Views around the object', 'Position', [10 12 300 22], 'Tag', 'mode3');
+mode_btn(1) = uiradiobutton(mode_group, 'Text', 'Complete set (recommended)', 'Position', [10 142 300 22], 'Tag', 'mode1');
+mode_btn(2) = uiradiobutton(mode_group, 'Text', 'One full image', 'Position', [10 110 300 22], 'Tag', 'mode2');
+mode_btn(3) = uiradiobutton(mode_group, 'Text', 'Views around the object', 'Position', [10 78 300 22], 'Tag', 'mode3');
+mode_btn(4) = uiradiobutton(mode_group, 'Text', 'Choose views on a map', 'Position', [10 46 300 22], 'Tag', 'mode4');
+mode_btn(5) = uiradiobutton(mode_group, 'Text', 'Choose views in Blender', 'Position', [10 14 300 22], 'Tag', 'mode5');
 mode_text = at(uilabel(g, 'Text', '', 'WordWrap', 'on', 'VerticalAlignment', 'top'), 2, 1);
 at(uilabel(g, 'Text', ['A view is one image seen from one direction and angle. A window is the part of the scene ' ...
     'it covers, from the whole object down to a small piece. Side views and partial views are just views ' ...
@@ -176,15 +203,15 @@ at(uilabel(g, 'Text', ['A view is one image seen from one direction and angle. A
 
 % ============================ Step 3: Views ===================================
 g = step_grid(3, [3 1]);
-g.RowHeight = {380, 30, 44};
+g.RowHeight = {400, 66, 44};
 g.Padding = [8 8 8 8];
 vstack = uigridlayout(g, [1 1]);
 vstack.Padding = [0 0 0 0];
 at(vstack, 1, 1);
-views_summary = at(uilabel(g, 'Text', '', 'FontWeight', 'bold'), 2, 1);
+views_summary = at(uilabel(g, 'Text', '', 'FontWeight', 'bold', 'WordWrap', 'on', 'VerticalAlignment', 'top', 'Tag', 'views_summary'), 2, 1);
 views_time = at(uilabel(g, 'Text', '', 'WordWrap', 'on', 'VerticalAlignment', 'top'), 3, 1);
 
-vp = gobjects(1, 3);
+vp = gobjects(1, 5);
 
 % one full image
 g = view_grid(vstack, 3);
@@ -252,6 +279,101 @@ row_hint(g, 8, 'How many of the partial views look from a low angle instead, so 
 row_label(g, 9, 'Side-view angles [deg]');
 comp_side_r = range_fields(g, 9, [62 80], [40 85], 'comp_side_r');
 row_hint(g, 9, 'From ... to. Near 85 is almost level with the ground: long shadows, dark ground.');
+
+% choose views on a map
+g = uigridlayout(vstack, [1 2]);
+g.Layout.Row = 1;
+g.Layout.Column = 1;
+g.Visible = 'off';
+g.ColumnWidth = {'1.6x', '1x'};
+g.Padding = [0 0 0 0];
+g.ColumnSpacing = 12;
+vp(4) = g;
+
+lc = uigridlayout(g, [2 1]);
+lc.RowHeight = {'1x', 112};
+lc.Padding = [0 0 0 0];
+lc.RowSpacing = 6;
+map_ax = uiaxes(lc);
+map_ax.Layout.Row = 1;
+map_ax.Toolbar.Visible = 'off';
+disableDefaultInteractivity(map_ax);
+title(map_ax, 'Top view of the object (north is up)');
+xlabel(map_ax, 'x [m]');
+ylabel(map_ax, 'north [m]');
+map_ax.ButtonDownFcn = @(~, ev) map_click(ev);
+pick_tbl = uitable(lc, 'ColumnName', {'View', 'Direction', 'Angle', 'Centre x', 'Centre z', 'Window'}, ...
+    'ColumnWidth', {60, 70, 60, 80, 80, '1x'}, 'RowName', {}, 'Data', cell(0, 6), 'Tag', 'picks', ...
+    'CellSelectionCallback', @(~, ev) pick_selected(ev));
+pick_tbl.Layout.Row = 2;
+
+rc = uigridlayout(g, [11 2]);
+rc.ColumnWidth = {110, '1x'};
+rc.RowHeight = {56, 26, 26, 26, 26, 26, 26, 26, 30, 26, '1x'};
+rc.Padding = [0 0 0 0];
+rc.RowSpacing = 4;
+inst = uilabel(rc, 'Text', ['Click the map to put the window there, then choose the direction, angle and size. ' ...
+    'The blue frame is the ground the picture will cover and the triangle is where the radar sits. ' ...
+    'Then click Add this view, and do it again for more.'], 'WordWrap', 'on', 'VerticalAlignment', 'top');
+at(inst, 1, [1 2]);
+row_label(rc, 2, 'A click sets');
+pick_click = at(uidropdown(rc, 'Items', {'The window centre', 'Where the radar sits'}, 'ItemsData', {'center', 'radar'}, ...
+    'Value', 'center', 'Tag', 'pick_click'), 2, 2);
+row_label(rc, 3, 'Direction [deg]');
+pick_dir = at(uieditfield(rc, 'numeric', 'Value', 0, 'Limits', [0 360], 'UpperLimitInclusive', 'off', 'Tag', 'pick_dir', ...
+    'ValueChangedFcn', @(~, ~) draw_overlay()), 3, 2);
+row_label(rc, 4, 'Angle [deg]');
+pick_inc = at(uieditfield(rc, 'numeric', 'Value', 50, 'Limits', [10 85], 'Tag', 'pick_inc', ...
+    'ValueChangedFcn', @(~, ~) draw_overlay()), 4, 2);
+row_label(rc, 5, 'Window width [m]');
+pick_w = at(uieditfield(rc, 'numeric', 'Value', 60, 'Limits', [5 3000], 'Tag', 'pick_w', ...
+    'ValueChangedFcn', @(~, ~) draw_overlay()), 5, 2);
+row_label(rc, 6, 'Window height [m]');
+pick_h = at(uieditfield(rc, 'numeric', 'Value', 45, 'Limits', [5 3000], 'Tag', 'pick_h', ...
+    'ValueChangedFcn', @(~, ~) draw_overlay()), 6, 2);
+row_label(rc, 7, 'Centre x [m]');
+pick_cx = at(uieditfield(rc, 'numeric', 'Value', 0, 'Tag', 'pick_cx', 'ValueChangedFcn', @(~, ~) draw_overlay()), 7, 2);
+row_label(rc, 8, 'Centre z [m]');
+pick_cz = at(uieditfield(rc, 'numeric', 'Value', 0, 'Tag', 'pick_cz', 'ValueChangedFcn', @(~, ~) draw_overlay()), 8, 2);
+pick_add = at(uibutton(rc, 'push', 'Text', 'Add this view', 'FontWeight', 'bold', 'Tag', 'pick_add', ...
+    'ButtonPushedFcn', @(~, ~) add_pick()), 9, [1 2]);
+bg2 = uigridlayout(rc, [1 2]);
+at(bg2, 10, [1 2]);
+bg2.Padding = [0 0 0 0];
+uibutton(bg2, 'push', 'Text', 'Remove selected', 'Tag', 'pick_remove', 'ButtonPushedFcn', @(~, ~) remove_pick());
+uibutton(bg2, 'push', 'Text', 'Clear all', 'Tag', 'pick_clear', 'ButtonPushedFcn', @(~, ~) clear_picks());
+pick_info = at(uilabel(rc, 'Text', '', 'WordWrap', 'on', 'VerticalAlignment', 'top'), 11, [1 2]);
+
+% views chosen in Blender
+g = uigridlayout(vstack, [7 3]);
+g.Layout.Row = 1;
+g.Layout.Column = 1;
+g.Visible = 'off';
+g.ColumnWidth = {170, '1x', 110};
+g.RowHeight = {66, 30, 36, 50, 36, 24, '1x'};
+g.Padding = [8 8 8 8];
+g.RowSpacing = 8;
+vp(5) = g;
+at(uilabel(g, 'Text', ['Choose each SAR image by eye in Blender: a yellow box on your object marks the window. Move it, ' ...
+    'turn it and resize it, and set the look angle. Blender opens with your object already loaded. Two buttons do ' ...
+    'the rest, and nothing runs in the background.'], ...
+    'WordWrap', 'on', 'VerticalAlignment', 'top'), 1, [1 3]);
+row_label(g, 2, 'Blender program');
+blender_field = at(uieditfield(g, 'text', 'Value', Find_Blender(), 'Tag', 'blender_exe', 'Placeholder', 'Browse to blender.exe'), 2, 2);
+at(uibutton(g, 'push', 'Text', 'Browse...', 'ButtonPushedFcn', @(~, ~) browse_blender()), 2, 3);
+at(uibutton(g, 'push', 'Text', 'Open Blender', 'FontWeight', 'bold', 'Tag', 'open_blender', ...
+    'ButtonPushedFcn', @(~, ~) open_blender()), 3, [1 2]);
+at(uilabel(g, 'Text', ['In Blender a yellow box lies on your object: it is the window. Click it, then G moves it, R turns it ' ...
+    '(the small triangle is the side the radar is on) and S resizes it; set the Angle in the panel under Transform. ' ...
+    'Add more boxes with "Add the yellow window box". There is nothing to save: click Capture here and it takes the ' ...
+    'boxes where they are now.'], ...
+    'WordWrap', 'on', 'VerticalAlignment', 'top'), 4, [1 3]);
+capture_btn = at(uibutton(g, 'push', 'Text', 'Capture', 'FontWeight', 'bold', 'FontSize', 15, 'Tag', 'capture_blender', ...
+    'ButtonPushedFcn', @(~, ~) capture_button()), 5, 2);
+bl_now = at(uicheckbox(g, 'Text', 'Make the images right away', 'Value', true, 'Tag', 'bl_now'), 5, 3);
+bl_info = at(uilabel(g, 'Text', 'Nothing captured yet.', 'Tag', 'bl_info', 'WordWrap', 'on'), 6, [1 3]);
+bl_tbl = at(uitable(g, 'ColumnName', {'Camera', 'Direction', 'Angle', 'Centre x', 'Centre z', 'Window'}, ...
+    'ColumnWidth', {110, 70, 60, 80, 80, '1x'}, 'RowName', {}, 'Data', cell(0, 6), 'Tag', 'bl_views'), 7, [1 3]);
 
 % ============================ Step 4: Radar and images ========================
 g = step_grid(4, [11 3]);
@@ -326,21 +448,25 @@ end
 
 % ============================ Step 6: Results =================================
 g = step_grid(6, [3 1]);
-g.RowHeight = {34, '1x', 176};
+g.RowHeight = {62, '1x', 176};
 g.Padding = [8 8 8 8];
 g.RowSpacing = 6;
 
-tb = uigridlayout(g, [1 6]);
+tb = uigridlayout(g, [2 6]);
 at(tb, 1, 1);
-tb.ColumnWidth = {'1x', 170, 200, 80, 150, 80};
+tb.RowHeight = {26, 28};
+tb.ColumnWidth = {140, 170, '1x', 70, 90, 70};
 tb.Padding = [0 0 0 0];
-res_path = uilabel(tb, 'Text', 'No dataset loaded.', 'Tag', 'res_path');
-uibutton(tb, 'push', 'Text', 'Open another dataset...', 'ButtonPushedFcn', @(~, ~) browse_dataset());
-filter_drop = uidropdown(tb, 'Items', FILTERS, 'ItemsData', 1:numel(FILTERS), 'Value', 1, 'Tag', 'filter', ...
-    'ValueChangedFcn', @(~, ~) apply_filter());
-prev_btn = uibutton(tb, 'push', 'Text', '< Prev', 'ButtonPushedFcn', @(~, ~) change_page(-1));
-page_lbl = uilabel(tb, 'Text', '', 'HorizontalAlignment', 'center', 'Tag', 'page');
-nextp_btn = uibutton(tb, 'push', 'Text', 'Next >', 'ButtonPushedFcn', @(~, ~) change_page(1));
+tb.RowSpacing = 4;
+res_path = at(uilabel(tb, 'Text', 'No dataset loaded.', 'Tag', 'res_path'), 1, [1 6]);
+hist_btn = at(uibutton(tb, 'push', 'Text', 'History', 'Tag', 'history', 'ButtonPushedFcn', @(~, ~) toggle_history(), ...
+    'Tooltip', 'Show the older images in this folder as well as the latest render, or go back to the latest render only.'), 2, 1);
+at(uibutton(tb, 'push', 'Text', 'Open another dataset...', 'ButtonPushedFcn', @(~, ~) browse_dataset()), 2, 2);
+filter_drop = at(uidropdown(tb, 'Items', FILTERS, 'ItemsData', 1:numel(FILTERS), 'Value', 1, 'Tag', 'filter', ...
+    'ValueChangedFcn', @(~, ~) apply_filter()), 2, 3);
+prev_btn = at(uibutton(tb, 'push', 'Text', '< Prev', 'ButtonPushedFcn', @(~, ~) change_page(-1)), 2, 4);
+page_lbl = at(uilabel(tb, 'Text', '', 'HorizontalAlignment', 'center', 'Tag', 'page'), 2, 5);
+nextp_btn = at(uibutton(tb, 'push', 'Text', 'Next >', 'ButtonPushedFcn', @(~, ~) change_page(1)), 2, 6);
 
 mainp = uigridlayout(g, [1 2]);
 at(mainp, 2, 1);
@@ -360,11 +486,11 @@ for i = 1:PAGE
     cell_grid(i).Layout.Row = ceil(i/4);
     cell_grid(i).Layout.Column = mod(i - 1, 4) + 1;
     inner = uigridlayout(cell_grid(i), [2 1]);
-    inner.RowHeight = {'1x', 30};
+    inner.RowHeight = {'1x', 44};
     inner.Padding = [2 2 2 2];
     inner.RowSpacing = 2;
     cell_img(i) = uiimage(inner, 'ScaleMethod', 'fit', 'ImageClickedFcn', @(~, ~) select_cell(i));
-    cell_cap(i) = uilabel(inner, 'Text', '', 'HorizontalAlignment', 'center', 'FontSize', 10, 'WordWrap', 'on');
+    cell_cap(i) = uilabel(inner, 'Text', '', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'FontSize', 10, 'WordWrap', 'on');
 end
 
 vw = uigridlayout(mainp, [3 2]);
@@ -414,9 +540,9 @@ at(uilabel(eg, 'Text', 'You choose where in the next step. Files with the same n
 
 % ---- start -----------------------------------------------------------------
 fig.UserData = struct('collect', @collect, 'apply', @apply_cfg, 'goto', @goto_step, 'start', @do_start, ...
-    'stop', @do_stop, 'next', @do_next, 'validate', @validate_step, 'step', @get_step, ...
+    'stop', @do_stop, 'next', @do_next, 'validate', @validate_step, 'step', @get_step, 'map_click', @map_click, 'picks', @get_picks, 'blender_capture', @capture_from_blender, 'blender_open', @open_blender, 'bl_picks', @get_bl_picks, ...
     'results_load', @load_dataset, 'results_filter', @apply_filter, 'results_select', @select_view, ...
-    'export', @export_to, 'shown', @get_shown);
+    'export', @export_to, 'shown', @get_shown, 'history', @toggle_history, 'results_views', @get_res_views);
 fig.CloseRequestFcn = @(~, ~) close_window();
 % Anything that changes the number of views or the time refreshes the summary
 for c = [comp_win, comp_inc, comp_side_r, {around_win, full_bearing, comp_cover, comp_n, comp_side}]
@@ -440,6 +566,10 @@ goto_step(1);
 
     function s = get_step()
         s = step;
+    end
+
+    function v = get_res_views()
+        v = {res_views.view};
     end
 
     function s = get_shown()
@@ -525,8 +655,8 @@ goto_step(1);
         [f, p] = uigetfile('*.obj', 'Select the .obj file', obj_field.Value);
         if ~isequal(f, 0)
             obj_field.Value = fullfile(p, f);
-            model_info.Text = 'Click Check model to see how big it is.';
             say('info', '');
+            check_model(false);
         end
     end
 
@@ -540,25 +670,84 @@ goto_step(1);
         cust_gnd.Enable = gnd_drop.Value == size(GROUNDS, 1);
     end
 
-    function check_model()
+    function check_model(force)
+        % Reads the chosen file (once per file, unless forced) and shows what it is
         p = obj_field.Value;
         if exist(p, 'file') ~= 2
             model_info.Text = 'Choose an .obj file first.';
             return
         end
+        if force, analysis = []; end
         check_btn.Enable = 'off';
-        model_info.Text = 'Reading the file ...';
-        drawnow;
-        try
-            [sz, n] = read_model_size(p, up_drop.Value);
-            model_size = sz; model_key = [p '|' up_drop.Value];
-            model_info.Text = sprintf(['%d vertices. Size with this "up": %.1f m across (x), %.1f m tall, %.1f m deep (z). ' ...
-                'If the height looks wrong, switch "Which way is up".'], n, sz(1), sz(2), sz(3));
-            update_summary();
-        catch err
-            model_info.Text = ['Could not read the file: ' err.message];
-        end
+        ok = ensure_model_size();
         check_btn.Enable = 'on';
+        if ok, update_summary(); end
+    end
+
+    function model_choice_changed()
+        % Up axis or units changed: applies the choice to what was already read
+        units_custom.Enable = strcmp(units_drop.Value, 'custom');
+        if ~isempty(analysis)
+            resolve_model();
+            update_summary();
+            if current_mode() == 4 && step == 3, refresh_map(); end
+        end
+    end
+
+    function u = units_choice()
+        % The units in use as Resolve_Model wants them: 'auto', or metres per unit
+        switch units_drop.Value
+            case 'auto', u = 'auto';
+            case 'custom', u = units_custom.Value;
+            otherwise, u = str2double(units_drop.Value);
+        end
+    end
+
+    function ok = ensure_model_size()
+        % Reads the object once per file and works out what it is; then applies the choices of up axis and units
+        ok = false;
+        p = obj_field.Value;
+        if exist(p, 'file') ~= 2, return; end
+        d = dir(p);
+        stamp = [d(1).bytes d(1).datenum];
+        if isempty(analysis) || ~strcmp(analysis_file, p) || ~isequal(analysis_stamp, stamp)
+            say('info', 'Reading the object ...');
+            model_info.Text = {'Reading the file ...'};
+            drawnow;
+            try
+                analysis = Analyze_OBJ(p, @read_progress);
+                analysis_file = p;
+                analysis_stamp = stamp;
+            catch err
+                analysis = []; resolved = []; model_size = []; model_pts = []; model_key = '';
+                say('error', ['Could not read the object: ' err.message]);
+                model_info.Text = {['Could not read the file: ' err.message]};
+                return
+            end
+            say('info', '');
+        end
+        resolve_model();
+        ok = true;
+    end
+
+    function read_progress(text)
+        model_info.Text = {text};
+        drawnow limitrate;
+    end
+
+    function resolve_model()
+        % What the file is under the current choices, and the text that says so
+        resolved = Resolve_Model(analysis, up_drop.Value, units_choice());
+        model_size = resolved.size_m;
+        model_pts = resolved.pts;
+        model_key = sprintf('%s|%s|%s', analysis_file, up_drop.Value, units_drop.Value);
+        if strcmp(units_drop.Value, 'custom'), model_key = sprintf('%s|%g', model_key, units_custom.Value); end
+        lines = resolved.findings;
+        for q = 1:numel(resolved.warnings), lines{end+1} = ['Note: ' resolved.warnings{q}]; end %#ok<AGROW>
+        if resolved.auto_up && ~isnan(analysis.facing(2)) && resolved.size_m(2) > max(resolved.size_m([1 3])) && resolved.size_m(2) > 100
+            lines{end+1} = 'Note: it is taller than it is wide. If it is lying on its side, change "Which way is up".';
+        end
+        model_info.Text = lines;
     end
 
 % =============================== step 2 =======================================
@@ -574,9 +763,15 @@ goto_step(1);
              'A good first test, and the quickest way to see what a view looks like.'], ...
             ['A systematic set: several directions round the object, optionally at several incidence angles, ' ...
              'and optionally as windows tiled over the object. Even and repeatable. For example 8 directions ' ...
-             'at 3 angles is 24 views.']};
+             'at 3 angles is 24 views.'], ...
+            ['You choose every view yourself, by eye. A top view of the object is shown: click where you want the ' ...
+             'window, choose which side the radar looks from, the angle and how much to cover, and see the ground ' ...
+             'the picture will cover before you add it. No other program is needed.'], ...
+            ['Choose the views in Blender, by eye, with cameras. Click Open Blender: it opens with your object loaded and ' ...
+             'a panel for the SAR views. Place a camera, click Send views in Blender, then click Capture here to take those ' ...
+             'views. Needs Blender installed; the other ways of choosing views do not.']};
         mode_text.Text = texts{k};
-        for j = 1:3, vp(j).Visible = j == k; end
+        for j = 1:5, vp(j).Visible = j == k; end
     end
 
     function k = current_mode()
@@ -588,45 +783,274 @@ goto_step(1);
 
     function show_view_settings()
         k = current_mode();
-        for j = 1:3, vp(j).Visible = j == k; end
+        for j = 1:5, vp(j).Visible = j == k; end
+        if k == 4, refresh_map(); end
     end
+
+    function refresh_map()
+        % Draws the object from above and, over it, the views picked so far
+        cla(map_ax);
+        if ~ensure_model_size() || isempty(model_pts)
+            text(map_ax, 0.5, 0.5, 'Choose the object in step 1 to see it here.', 'Units', 'normalized', 'HorizontalAlignment', 'center');
+            return
+        end
+        scatter(map_ax, model_pts(:, 1), -model_pts(:, 3), 4, model_pts(:, 2), 'filled', 'PickableParts', 'none');
+        hold(map_ax, 'on');
+        colormap(map_ax, 'parula');
+        axis(map_ax, 'equal');
+        pad = 0.2*max(model_size([1 3]));
+        xlim(map_ax, [min(model_pts(:, 1)) - pad, max(model_pts(:, 1)) + pad]);
+        ylim(map_ax, [min(-model_pts(:, 3)) - pad, max(-model_pts(:, 3)) + pad]);
+        map_ax.ButtonDownFcn = @(~, ev) map_click(ev);
+        if ~strcmp(map_key, model_key)
+            % a new object: start the draft in the middle of it, about half its size
+            map_key = model_key;
+            pick_cx.Value = (min(model_pts(:, 1)) + max(model_pts(:, 1)))/2;
+            pick_cz.Value = (min(model_pts(:, 3)) + max(model_pts(:, 3)))/2;
+            w = max(5, min(300, round(0.5*max(model_size([1 3])))));
+            pick_w.Value = w;
+            pick_h.Value = max(5, round(0.75*w));
+        end
+        draw_overlay();
+    end
+
+    function draw_overlay()
+        % The picked views in orange, and the draft in blue with the radar's place
+        if isempty(model_pts), return; end
+        delete(findobj(map_ax, 'Tag', 'overlay'));
+        hold(map_ax, 'on');
+        orange = [0.95 0.6 0.1]; blue = [0.2 0.55 0.85];
+        for q = 1:size(picks, 1)
+            r = picks(q, :);
+            P = footprint(r(1), r(2), r(3), r(4), r(5), r(6));
+            plot(map_ax, P(:, 1), P(:, 2), '-', 'Color', orange, 'LineWidth', 1.5, 'Tag', 'overlay', 'PickableParts', 'none');
+            text(map_ax, r(3), -r(4), sprintf('%d', q), 'Color', orange, 'FontWeight', 'bold', ...
+                'HorizontalAlignment', 'center', 'Tag', 'overlay', 'PickableParts', 'none');
+        end
+        b = pick_dir.Value; i = pick_inc.Value; cx = pick_cx.Value; cz = pick_cz.Value; w = pick_w.Value; h = pick_h.Value;
+        P = footprint(b, i, cx, cz, w, h);
+        plot(map_ax, P(:, 1), P(:, 2), '-', 'Color', blue, 'LineWidth', 2.5, 'Tag', 'overlay', 'PickableParts', 'none');
+        d = h/cosd(i);                                   % the frame's height, laid out along the ground
+        k = d/2 + 0.12*max(w, d);
+        rx = cx + k*sind(b); ry = -cz + k*cosd(b);       % the radar sits on the side the direction names
+        plot(map_ax, [rx cx], [ry -cz], '-', 'Color', blue, 'LineWidth', 1.5, 'Tag', 'overlay', 'PickableParts', 'none');
+        plot(map_ax, rx, ry, '^', 'MarkerSize', 11, 'MarkerFaceColor', blue, 'MarkerEdgeColor', blue, 'Tag', 'overlay', 'PickableParts', 'none');
+        pick_info.Text = sprintf('This view covers %.0f m across and %.0f m along the ground, about %.0f x %.0f pixels at 0.30 m resolution.', ...
+            w, d, w/0.15, max(d, h)/0.15);
+    end
+
+    function map_click(ev)
+        if isempty(model_pts), return; end
+        p = ev.IntersectionPoint;
+        x = p(1); z = -p(2);                              % the map shows north up, and north is -z
+        if strcmp(pick_click.Value, 'center')
+            pick_cx.Value = x;
+            pick_cz.Value = z;
+        else
+            dx = x - pick_cx.Value; dz = z - pick_cz.Value;
+            if hypot(dx, dz) > 0
+                pick_dir.Value = mod(atan2(dx, -dz)*180/pi, 360);   % the radar is the way the click points
+            end
+        end
+        draw_overlay();
+    end
+
+    function add_pick()
+        picks(end+1, :) = [pick_dir.Value, pick_inc.Value, pick_cx.Value, pick_cz.Value, pick_w.Value, pick_h.Value];
+        update_pick_table();
+        draw_overlay();
+        update_summary();
+        say('ok', sprintf('Added view %d. Click the map for the next one, or go on with Next.', size(picks, 1)));
+    end
+
+    function remove_pick()
+        if pick_sel >= 1 && pick_sel <= size(picks, 1)
+            picks(pick_sel, :) = [];
+            pick_sel = 0;
+            update_pick_table();
+            draw_overlay();
+            update_summary();
+        else
+            say('error', 'Click a row of the list first, then Remove selected.');
+        end
+    end
+
+    function clear_picks()
+        picks = zeros(0, 6);
+        pick_sel = 0;
+        update_pick_table();
+        draw_overlay();
+        update_summary();
+    end
+
+    function pick_selected(ev)
+        if ~isempty(ev.Indices), pick_sel = ev.Indices(1); end
+    end
+
+    function update_pick_table()
+        d = cell(size(picks, 1), 6);
+        for q = 1:size(picks, 1)
+            r = picks(q, :);
+            d(q, :) = {sprintf('Pick%d', q), sprintf('%.0f', r(1)), sprintf('%.0f', r(2)), sprintf('%.1f', r(3)), ...
+                sprintf('%.1f', r(4)), sprintf('%.0f x %.0f m', r(5), r(6))};
+        end
+        pick_tbl.Data = d;
+    end
+
+    function p = get_picks()
+        p = picks;
+    end
+
+    function p = get_bl_picks()
+        p = bl_picks;
+    end
+
+    function browse_blender()
+        [f, p] = uigetfile('blender*.exe', 'Find blender.exe', blender_field.Value);
+        if ~isequal(f, 0), blender_field.Value = fullfile(p, f); end
+    end
+
+    function d = blender_dir()
+        % Where Blender and this window hand things to each other
+        d = fullfile(strtrim(out_field.Value), 'blender_handoff');
+    end
+
+    function open_blender()
+        m = validate_step(1);
+        if ~isempty(m), say('error', m); return; end
+        exe = strtrim(blender_field.Value);
+        if isempty(exe) || ~isfile(exe)
+            exe = Find_Blender();
+            if isempty(exe)
+                say('error', 'Blender was not found. Install it, or click Browse... and choose blender.exe.');
+                return
+            end
+            blender_field.Value = exe;
+        end
+        try
+            if ~ensure_model_size(), return; end
+            Launch_Blender(exe, obj_field.Value, resolved.up, blender_dir(), ...
+                struct('bandwidth_mhz', bw_field.Value, 'factors', unique(parse_list(fac_field.Value)), 'scale', resolved.scale));
+            say('info', ['Blender is opening with your object. Place a SAR camera, click "Send views to the SAR window" ' ...
+                '(SAR tab, press N), then come back here and click Capture.']);
+        catch err
+            say('error', ['Could not open Blender: ' err.message]);
+        end
+    end
+
+    function ok = capture_from_blender(run_now)
+        % Takes the views from Blender: where the boxes are now (sar_live.json), or from "Send views to the
+        % SAR window", whichever is newer. A button, not a watcher: nothing runs in the background.
+        if nargin < 1, run_now = false; end
+        ok = false;
+        js = fullfile(blender_dir(), 'sar_views.json');
+        blend = fullfile(blender_dir(), 'blender_scene.blend');
+        live = fullfile(blender_dir(), 'sar_live.json');
+        source = 'the views Blender sent';
+        try
+            % Three places hold the views: sar_live.json (kept up to date by Blender whenever the scene changes),
+            % what "Send views" wrote, and the scene Blender saved. Take whichever is newest.
+            t_sent = 0; if isfile(js), t_sent = dir_time(js); end
+            t_live = 0; if isfile(live), t_live = dir_time(live); end
+            t_blend = 0; if isfile(blend), t_blend = dir_time(blend); end
+            slack = 10/86400;                                   % a save and the live file land within seconds of each other
+            if t_live > 0 && t_live >= max(t_sent, t_blend) - slack
+                js = live;
+                source = sprintf('where the box is in Blender now (as of %s)', datestr(t_live, 'HH:MM:SS'));
+            elseif t_blend > t_sent
+                source = sprintf('the scene Blender saved at %s', datestr(t_blend, 'HH:MM:SS'));
+                exe = strtrim(blender_field.Value);
+                if isempty(exe) || ~isfile(exe), exe = Find_Blender(); end
+                say('info', 'Reading the boxes from the file Blender saved ...');
+                drawnow;
+                Export_Blender_Views(exe, blender_dir());
+            end
+            [pk, nm, ob, when] = Read_Blender_Views(js);
+        catch err
+            say('error', [err.message ' Open Blender from this window, place the yellow box, and click Capture again.']);
+            return
+        end
+        if ~isfile(ob)
+            say('error', ['The model Blender exported is missing: ' ob]);
+            return
+        end
+        bl_picks = pk; bl_names = nm; blender_obj = ob;
+        update_bl_table();
+        bl_info.Text = sprintf('%d view%s captured, read from %s.', size(pk, 1), plural(size(pk, 1)), source);
+        update_summary();
+        % A window has to be small enough for the radar's resolution. If not, say so here, in plain words,
+        % instead of leaving it to fail later.
+        if strcmp(res_drop.Value, 'manual')
+            pix = 299792458/(2*bw_field.Value*1e6)/2;
+            for q = 1:size(pk, 1)
+                w = pk(q, 5); h = pk(q, 6);
+                px = max(w, max(h*tan(pk(q, 2)*pi/180), h))/pix;
+                if px > 2000
+                    say('error', sprintf(['%s: its window is %.0f m wide, which would be an image about %.0f pixels across at %.2f m ' ...
+                        'resolution (the limit is 2000). In Blender make the yellow box smaller (about %.0f m across or less), ' ...
+                        'and click Capture again.'], nm{q}, w, px, 2*pix, 2000*pix*min(1, w/max(w, h*max(tan(pk(q, 2)*pi/180), 1)))));
+                    return
+                end
+            end
+        end
+        ok = true;
+        say('ok', sprintf('Captured %d view%s from Blender.', size(pk, 1), plural(size(pk, 1))));
+        if run_now
+            goto_step(5);
+            do_start();
+        end
+    end
+
+    function capture_button()
+        capture_from_blender(bl_now.Value);   % the tick box is read when the button is pressed
+    end
+
+    function t = dir_time(path)
+        d = dir(path);
+        t = d(1).datenum;
+    end
+
+    function update_bl_table()
+        d = cell(size(bl_picks, 1), 6);
+        for q = 1:size(bl_picks, 1)
+            r = bl_picks(q, :);
+            d(q, :) = {bl_names{q}, sprintf('%.0f', r(1)), sprintf('%.0f', r(2)), sprintf('%.1f', r(3)), ...
+                sprintf('%.1f', r(4)), sprintf('%.0f x %.0f m', r(5), r(6))};
+        end
+        bl_tbl.Data = d;
+    end
+
 
     function n = count_views()
         switch current_mode()
             case 1, [nw, np] = complete_counts(); n = nw + max(0, np);
             case 2, n = 1;
-            otherwise, n = around_n.Value*max(1, numel(unique(parse_list(around_inc.Value))))*around_grid.Value^2;
+            case 3, n = around_n.Value*max(1, numel(unique(parse_list(around_inc.Value))))*around_grid.Value^2;
+            case 4, n = size(picks, 1);
+            otherwise, n = size(bl_picks, 1);
         end
+    end
+
+    function a = structure_area()
+        % Ground in m^2 that has structure on it, from the sample of the object; the box's area if there is none
+        a = model_size(1)*model_size(3);
+        if isempty(resolved) || size(resolved.structure, 1) < 50, return; end
+        c = max(2, 0.4*comp_win{1}.Value);
+        P = resolved.structure;
+        o = Occupied_Area([P(:, 1) - c/2, P(:, 2) - c/2, P(:, 1) + c/2, P(:, 2) + c/2, ones(size(P, 1), 1)], c);
+        if o.usable, a = o.area_m2; end
     end
 
     function [nw, np] = complete_counts()
         % Whole-scene views, and partial views (NaN until the object has been read)
         nw = comp_whole_n.Value*numel(unique(parse_list(comp_whole_inc.Value)));
+        if strcmp(res_drop.Value, 'manual') && whole_scene_px() > 2000, nw = 0; end   % too big at this resolution: left out (see the note)
         if strcmp(comp_auto.Value, 'fixed')
             np = comp_n.Value;
         elseif ensure_model_size()
-            np = Views_For_Coverage(model_size(1)*model_size(3), [comp_win{1}.Value comp_win{2}.Value], comp_cover.Value);
+            np = Views_For_Coverage(structure_area(), [comp_win{1}.Value comp_win{2}.Value], comp_cover.Value);
         else
             np = NaN;
-        end
-    end
-
-    function ok = ensure_model_size()
-        % Reads the object's size once per file and choice of up axis
-        ok = false;
-        if exist(obj_field.Value, 'file') ~= 2, return; end
-        key = [obj_field.Value '|' up_drop.Value];
-        if strcmp(key, model_key), ok = ~isempty(model_size); return; end
-        say('info', 'Reading the object to work out how many views it needs ...');
-        drawnow;
-        try
-            [model_size, ~] = read_model_size(obj_field.Value, up_drop.Value);
-            model_key = key;
-            ok = true;
-            say('info', '');
-        catch err
-            model_size = []; model_key = '';
-            say('error', ['Could not read the object: ' err.message]);
         end
     end
 
@@ -650,7 +1074,8 @@ goto_step(1);
             s = sprintf('%d views (%d whole scene, %d partial): %d HR images and %d lower-resolution images', ...
                 n, nw, np, n, n*nf);
             if strcmp(comp_auto.Value, 'auto') && ~isempty(model_size)
-                s = sprintf('%s. The object is %.0f x %.0f m.', s, model_size(1), model_size(3));
+                s = sprintf('%s. The object is %s x %s, and the parts with structure on them are about %s.', s, ...
+                    length_text(model_size(1)), length_text(model_size(3)), area_text(structure_area()));
             end
         else
             n = count_views();
@@ -659,8 +1084,49 @@ goto_step(1);
         end
     end
 
+    function px = whole_scene_px()
+        % About how many pixels across the whole scene would be at the chosen resolution (NaN if the object is not read yet)
+        px = NaN;
+        if isempty(model_size), return; end
+        if strcmp(res_drop.Value, 'manual')
+            px = 1.15*hypot(model_size(1), model_size(3))/(299792458/(2*bw_field.Value*1e6)/2);
+        else
+            px = px_field.Value;
+        end
+    end
+
+    function t = view_seconds(w)
+        % Seconds for one view of a window w m wide. Street_01: about 10 s of set-up and a radar
+        % part that grows with the image's area (65 s for its whole 125 m scene at 500 MHz). Tall
+        % structures stretch the image along the range (layover), which makes it longer.
+        if isempty(model_size), t = 10 + 55*0.16; return; end
+        if strcmp(res_drop.Value, 'manual')
+            pix = 299792458/(2*bw_field.Value*1e6)/2;
+        else
+            pix = 1.15*hypot(model_size(1), model_size(3))/max(px_field.Value, 1);
+        end
+        k = (w/125)*(0.15/pix);
+        lift = 1 + min(2, 0.5*model_size(2)/max(w, 1));
+        t = 10 + 55*k^2*lift;
+    end
+
+    function t = whole_scene_note()
+        % A warning if whole-scene images would be too big at the fixed resolution, for the modes that make them
+        t = '';
+        if isempty(model_size) || ~strcmp(res_drop.Value, 'manual'), return; end
+        m = current_mode();
+        makes_whole = (m == 1 && comp_whole_n.Value > 0) || m == 2 || (m == 3 && around_win.Value >= 100 && around_grid.Value == 1);
+        if ~makes_whole, return; end
+        px = whole_scene_px();
+        if px > 2000
+            t = sprintf([' Note: at %g MHz the whole scene would be about %s pixels across, more than the 2,000 this can make, ' ...
+                'so the whole-scene views are left out and only windows are made. For the whole scene, choose Automatic resolution in step 4.'], ...
+                bw_field.Value, regexprep(sprintf('%d', round(px)), '(\d)(?=(\d{3})+$)', '$1,'));
+        end
+    end
+
     function update_summary()
-        views_summary.Text = summary_text();
+        views_summary.Text = [summary_text() whole_scene_note()];
         views_time.Text = time_estimate(count_views());
     end
 
@@ -671,13 +1137,13 @@ goto_step(1);
             case 1
                 [nw, np] = complete_counts();
                 if isnan(np), np = 0; end
-                f = 0.4;
-                if ~isempty(model_size)
-                    f = min(1, mean([comp_win{1}.Value comp_win{2}.Value])/max(model_size([1 3])));
-                end
-                t = nw*65 + np*(10 + 55*f^2);
+                w1 = comp_win{1}.Value; w2 = comp_win{2}.Value;
+                if whole_scene_px() > 2000 && strcmp(res_drop.Value, 'manual'), nw = 0; end   % those are left out
+                t = nw*65 + np*mean([view_seconds(w1), view_seconds((w1 + w2)/2), view_seconds(w2)]);
             case 2, t = 65;
-            otherwise, t = n*(10 + 55*(around_win.Value/100)^2);
+            case 3, t = n*(10 + 55*(around_win.Value/100)^2);
+            case 4, t = size(picks, 1)*(10 + 55*0.25);
+            otherwise, t = size(bl_picks, 1)*(10 + 55*0.25);
         end
         if t < 90, s = sprintf('Roughly %.0f seconds in all.', t);
         elseif t < 5400, s = sprintf('Roughly %.0f minutes in all.', t/60);
@@ -713,6 +1179,8 @@ goto_step(1);
         cfg.obj = obj_field.Value;
         cfg.out = strtrim(out_field.Value);
         cfg.up = up_drop.Value;
+        cfg.units = units_drop.Value;
+        cfg.units_custom = units_custom.Value;
         cfg.material = mat_drop.Value;
         cfg.ground = gnd_drop.Value;
         cfg.custom_obj = strtrim(cust_obj.Value);
@@ -734,6 +1202,11 @@ goto_step(1);
         cfg.comp_inc = [comp_inc{1}.Value comp_inc{2}.Value];
         cfg.comp_side = comp_side.Value;
         cfg.comp_side_r = [comp_side_r{1}.Value comp_side_r{2}.Value];
+        cfg.picks = picks;
+        cfg.blender_exe = blender_field.Value;
+        cfg.blender_obj = blender_obj;
+        cfg.bl_picks = bl_picks;
+        cfg.bl_names = bl_names;
         cfg.res = res_drop.Value;
         cfg.px = px_field.Value;
         cfg.bw = bw_field.Value;
@@ -751,10 +1224,21 @@ goto_step(1);
         set_if = @(c, name) assign(c, cfg, name);
         obj_field.Value = pick(cfg, 'obj', obj_field.Value);
         out_field.Value = pick(cfg, 'out', out_field.Value);
-        set_if(up_drop, 'up');
+        set_if(up_drop, 'up'); set_if(units_drop, 'units'); set_if(units_custom, 'units_custom');
+        units_custom.Enable = strcmp(units_drop.Value, 'custom');
         set_if(mat_drop, 'material'); set_if(gnd_drop, 'ground');
         set_if(cust_obj, 'custom_obj'); cust_gnd.Value = pick(cfg, 'custom_ground', cust_gnd.Value);
-        if isfield(cfg, 'mode') && cfg.mode >= 1 && cfg.mode <= 3, mode_group.SelectedObject = mode_btn(cfg.mode); end
+        if isfield(cfg, 'mode') && cfg.mode >= 1 && cfg.mode <= 5, mode_group.SelectedObject = mode_btn(cfg.mode); end
+        if isfield(cfg, 'picks'), picks = to_picks(cfg.picks); pick_sel = 0; update_pick_table(); end
+        if isfield(cfg, 'bl_picks')
+            bl_picks = to_picks(cfg.bl_picks);
+            bl_names = cellstr(cfg.bl_names(:))';
+            if numel(bl_names) ~= size(bl_picks, 1), bl_names = arrayfun(@(q) sprintf('SAR%d', q), 1:size(bl_picks, 1), 'UniformOutput', false); end
+            bl_names = bl_names(:);
+        end
+        blender_obj = pick(cfg, 'blender_obj', blender_obj);
+        if isfield(cfg, 'blender_exe') && ~isempty(cfg.blender_exe), blender_field.Value = cfg.blender_exe; end
+        update_bl_table();
         set_if(full_bearing, 'full_bearing'); set_if(full_inc, 'full_inc');
         set_if(around_n, 'around_n'); set_if(around_first, 'around_first'); set_if(around_inc, 'around_inc');
         set_if(around_win, 'around_win'); set_if(around_grid, 'around_grid');
@@ -796,13 +1280,23 @@ goto_step(1);
 
     function refresh_results()
         % Show the dataset this session made, or the one the settings point at
-        if isempty(res_root)
-            [~, name] = fileparts(obj_field.Value);
-            cand = fullfile(strtrim(out_field.Value), regexprep(name, '[^A-Za-z0-9_-]+', '_'));
-            if ~isempty(name) && exist(fullfile(cand, 'views'), 'dir') == 7, res_root = cand; end
+        % Candidates: the one already shown, the one the settings point at, and the ones made from Blender
+        % (by this window, or by Blender's own Capture button). The newest wins.
+        [~, name] = fileparts(obj_field.Value);
+        out = strtrim(out_field.Value);
+        cands = {res_root, fullfile(out, regexprep(name, '[^A-Za-z0-9_-]+', '_')), fullfile(out, 'blender_scene'), ...
+            fullfile(out, 'blender_handoff', 'blender_scene')};
+        best = ''; best_t = 0;
+        for q = 1:numel(cands)
+            if ~isempty(cands{q}) && exist(fullfile(cands{q}, 'views'), 'dir') == 7
+                dd = dir(fullfile(cands{q}, 'views', '*', 'view_info.mat'));
+                if ~isempty(dd) && max([dd.datenum]) > best_t, best = cands{q}; best_t = max([dd.datenum]); end
+            end
         end
+        if ~isempty(best), res_root = best; end
         if isempty(res_root)
-            res_views = []; res_shown = [];
+            res_all = []; res_views = []; res_shown = []; res_loaded = '';
+            hist_btn.Enable = 'off'; hist_btn.Text = 'History (none)';
             res_path.Text = 'No dataset yet. Make one in step 5, or open an earlier one.';
             show_page();
             return
@@ -811,12 +1305,69 @@ goto_step(1);
     end
 
     function load_dataset(folder)
+        % Reads the folder. It opens on the latest render only, and the older views are behind History, so
+        % that a folder that has grown over many runs does not show old and new images mixed together.
+        same = strcmp(folder, res_loaded);
         res_root = folder;
-        res_views = read_views(folder);
+        res_loaded = folder;
+        res_all = read_views(folder);
+        if ~same, res_scope = 'run'; end
         res_sel = 0;
-        res_path.Text = sprintf('%s  (%d views)', folder, numel(res_views));
-        res_path.Tooltip = folder;
+        apply_scope();
+    end
+
+    function ids = latest_ids()
+        % The views of the latest render: from this window's last run, or from the note the run leaves in the folder
+        if strcmp(last_run.root, res_root)
+            ids = last_run.ids;
+        else
+            ids = read_last_run(res_root);
+        end
+        if ~isempty(res_all), ids = ids(ismember(ids, {res_all.view})); end
+        if isempty(ids) && ~isempty(res_all), ids = newest_group(res_all); end   % a folder from before runs were recorded
+    end
+
+    function apply_scope()
+        ids = latest_ids();
+        n_all = numel(res_all);
+        if isempty(ids) || numel(ids) == n_all
+            % a dataset from before runs were recorded, or one run made everything: nothing older to hide
+            res_scope = 'run';
+            res_views = res_all;
+            if isempty(ids), res_views = sort_newest(res_all); end
+            older = 0;
+        elseif strcmp(res_scope, 'run')
+            [~, at_i] = ismember(ids, {res_all.view});
+            res_views = res_all(at_i);
+            older = n_all - numel(ids);
+        else
+            res_views = sort_newest(res_all);
+            older = n_all - numel(ids);
+        end
+        if older > 0
+            hist_btn.Enable = 'on';
+            hist_btn.Text = ternary(strcmp(res_scope, 'run'), sprintf('History (%d older)', older), 'Latest render only');
+        else
+            hist_btn.Enable = 'off';
+            hist_btn.Text = 'History (none)';
+        end
+        n = numel(res_views);
+        if strcmp(res_scope, 'run') && older > 0
+            res_path.Text = sprintf('Latest render: %d view%s in %s. History has %d older.', n, plural(n), res_root, older);
+        elseif strcmp(res_scope, 'all')
+            res_path.Text = sprintf('History: all %d views in %s, newest first.', n, res_root);
+        else
+            res_path.Text = sprintf('%s  (%d view%s)', res_root, n, plural(n));
+        end
+        res_path.Tooltip = res_root;
+        res_sel = 0;
         apply_filter();
+    end
+
+    function toggle_history()
+        if isempty(res_all), return; end
+        res_scope = ternary(strcmp(res_scope, 'run'), 'all', 'run');
+        apply_scope();
     end
 
     function browse_dataset()
@@ -868,7 +1419,9 @@ goto_step(1);
                 f = fullfile(res_root, 'views', v.view, 'HR.png');
                 if exist(f, 'file') == 2, cell_img(i).ImageSource = f; else, cell_img(i).ImageSource = ''; end
                 tok = strsplit(v.view, '_');
-                cell_cap(i).Text = {strjoin(tok(1:min(2, numel(tok))), ' '), sprintf('az %g   inc %g', v.bearing_deg, v.incidence_deg)};
+                cap = {strjoin(tok(1:min(2, numel(tok))), ' '), sprintf('az %g   inc %g', v.bearing_deg, v.incidence_deg)};
+                if strcmp(res_scope, 'all') && ~isnan(v.made), cap{3} = datestr(v.made, 'dd mmm HH:MM'); end   % history: when it was made
+                cell_cap(i).Text = cap;
                 cell_grid(i).Visible = 'on';
             else
                 cell_grid(i).Visible = 'off';
@@ -1060,6 +1613,14 @@ goto_step(1);
                         if isempty(inc) || any(inc < 10) || any(inc > 85)
                             m = 'Incidence angles must be numbers between 10 and 85, e.g. 45 or 35 45 55.'; return
                         end
+                    case 4
+                        if isempty(picks)
+                            m = 'Add at least one view: click the map to place the window, then click Add this view.'; return
+                        end
+                    case 5
+                        if isempty(bl_picks)
+                            m = 'No views captured yet: choose them in Blender, click "Send views to the SAR window" there, then click Capture here.'; return
+                        end
                 end
             case 4
                 f = parse_list(fac_field.Value);
@@ -1091,13 +1652,38 @@ goto_step(1);
             case 2
                 opts.bearings = cfg.full_bearing;
                 opts.incidences = cfg.full_inc;
+            case 4
+                vs = struct('name', {}, 'bearing', {}, 'incidence', {}, 'center', {}, 'width_m', {}, 'height_m', {});
+                for q = 1:size(cfg.picks, 1)
+                    r = cfg.picks(q, :);
+                    vs(end+1) = struct('name', sprintf('Pick%d', q), 'bearing', r(1), 'incidence', r(2), ...
+                        'center', [r(3) r(4)], 'width_m', r(5), 'height_m', r(6)); %#ok<AGROW>
+                end
+                opts.views = vs;
+            case 5
+                vs = struct('name', {}, 'bearing', {}, 'incidence', {}, 'center', {}, 'width_m', {}, 'height_m', {});
+                for q = 1:size(cfg.bl_picks, 1)
+                    r = cfg.bl_picks(q, :);
+                    vs(end+1) = struct('name', cfg.bl_names{q}, 'bearing', r(1), 'incidence', r(2), ...
+                        'center', [r(3) r(4)], 'width_m', r(5), 'height_m', r(6)); %#ok<AGROW>
+                end
+                opts.views = vs;
             otherwise
                 opts.bearings = mod(cfg.around_first + (0:cfg.around_n-1)*360/cfg.around_n, 360);
                 opts.incidences = unique(parse_list(cfg.around_inc));
                 opts.window = cfg.around_win/100;
                 opts.grid = cfg.around_grid;
         end
-        opts.up_axis = cfg.up;
+        if cfg.mode == 5
+            opts.up_axis = 'y';       % Blender exports its model with Y up, in metres
+            opts.scale = 1;
+        elseif ~isempty(resolved) && strcmp(analysis_file, cfg.obj)
+            opts.up_axis = resolved.up;       % what the user saw in step 1
+            opts.scale = resolved.scale;
+        else
+            opts.up_axis = cfg.up;
+            opts.scale = ternary(strcmp(cfg.units, 'auto'), 'auto', ternary(strcmp(cfg.units, 'custom'), cfg.units_custom, str2double(cfg.units)));
+        end
         opts.finish = ternary(cfg.material == size(OBJ_MATERIALS, 1), cfg.custom_obj, OBJ_MATERIALS{cfg.material, 2});
         if cfg.ground == 4
             opts.ground = false;
@@ -1115,10 +1701,23 @@ goto_step(1);
         opts.overwrite = cfg.redo;
     end
 
+    function t = model_line(cfg)
+        if cfg.mode == 5
+            t = 'the model as Blender shows it (metres)';
+        elseif ~isempty(resolved) && strcmp(analysis_file, cfg.obj)
+            t = sprintf('%s up, %s%s: %s across, %s tall, %s deep', upper(resolved.up), resolved.units, ...
+                ternary(resolved.scale == 1, '', sprintf(' (x%g)', resolved.scale)), ...
+                length_text(resolved.size_m(1)), length_text(resolved.size_m(2)), length_text(resolved.size_m(3)));
+        else
+            t = 'worked out when the run starts';
+        end
+    end
+
     function refresh_review()
         cfg = collect();
-        modes = {'Complete set', 'One full image', 'Views around the object'};
-        lines = {sprintf('Object:   %s', cfg.obj), ...
+        modes = {'Complete set', 'One full image', 'Views around the object', 'Views picked on a map', 'Views chosen in Blender'};
+        lines = {sprintf('Object:   %s', ternary(cfg.mode == 5 && ~isempty(cfg.blender_obj), cfg.blender_obj, cfg.obj)), ...
+                 sprintf('Model:    %s', model_line(cfg)), ...
                  sprintf('Save in:  %s', cfg.out), ...
                  sprintf('Create:   %s, %s', modes{cfg.mode}, summary_text()), ...
                  sprintf('Radar:    %s; lower-resolution versions: %s', ...
@@ -1141,7 +1740,8 @@ goto_step(1);
             if ~isempty(m), step = j; show_step(); say('error', m); return; end
         end
         cfg = collect();
-        [~, name] = fileparts(cfg.obj);
+        obj_run = ternary(cfg.mode == 5, cfg.blender_obj, cfg.obj);   % in Blender mode the views belong to Blender's model
+        [~, name] = fileparts(obj_run);
         root_dir = fullfile(cfg.out, regexprep(name, '[^A-Za-z0-9_-]+', '_'));
         try
             if exist(cfg.out, 'dir') ~= 7, mkdir(cfg.out); end
@@ -1152,12 +1752,12 @@ goto_step(1);
             return
         end
 
+        if cfg.mode ~= 5, ensure_model_size(); end   % what the object is, so the run uses what step 1 showed
         opts = build_opts(cfg);
         opts.progress = @on_progress;
         opts.view_done = @on_view_done;
         opts.should_stop = @stop_wanted;   % a nested-function handle reads the live flag; @() stop_requested would freeze its value
 
-        if cfg.mode == 1, ensure_model_size(); end
         planned_n = 0;
         running = true; stop_requested = false; view_rows = {};
         tbl.Data = cell(0, 7);
@@ -1169,21 +1769,26 @@ goto_step(1);
         t0 = tic;
         finished_ok = false;
         try
-            [index, notes] = Make_Multi_Angle_Dataset(cfg.obj, cfg.out, opts);
-            n_done = sum(strcmp({index.status}, 'done'));
+            [~, notes, run_rows] = Make_Multi_Angle_Dataset(obj_run, cfg.out, opts);
+            last_run = struct('root', root_dir, 'ids', {{run_rows.view}});   % Results shows these, and keeps the rest as history
+            % Count only the views of this run. The dataset folder also holds the views of earlier
+            % runs (every earlier Blender capture, for one), and those are not this run's to judge.
+            states = {run_rows.status};
+            n_done = sum(strcmp(states, 'done'));
+            n_failed = sum(strcmp(states, 'failed'));
             expected = ternary(planned_n > 0, planned_n, count_views());   % views the run set out to make
             left_out = '';
             if ~isempty(notes), left_out = [' Note: ' strjoin(notes, ' ')]; end
-            if n_done == expected
+            if n_failed == 0 && n_done == expected
                 say('ok', sprintf('Finished: %d views in %.0f s. The images and dataset_index.csv are in %s.%s', n_done, toc(t0), root_dir, left_out));
                 run_status.Text = 'Finished.';
                 set_bar(1);
                 finished_ok = true;
-            elseif stop_requested
+            elseif n_failed == 0 && stop_requested
                 say('info', sprintf('Stopped. %d of %d views are done; start again to carry on.', n_done, expected));
                 run_status.Text = 'Stopped.';
             else
-                say('error', sprintf('%d of %d views are done. The others failed: click their rows to see why, then Start again to retry them.', n_done, expected));
+                say('error', sprintf('%d of %d views are done, %d failed. Click a failed row to see why, then Start again to retry it.%s', n_done, expected, n_failed, left_out));
                 run_status.Text = 'Finished with errors.';
             end
         catch err
@@ -1194,7 +1799,9 @@ goto_step(1);
         set_busy(false);
         open_btn.Enable = exist(root_dir, 'dir') == 7;
         if finished_ok
-            res_root = root_dir;       % a finished run opens on its own results
+            res_root = root_dir;       % a finished run opens on its own results, without the older ones
+            res_scope = 'run';
+            res_loaded = root_dir;
             res_sel = 0;
             goto_step(6);
             say('ok', sprintf('Finished: %d views in %.0f s. All of them are below; use Download to save them anywhere you like.%s', n_done, toc(t0), left_out));
@@ -1310,7 +1917,7 @@ function vs = read_views(folder)
 % versions still open.
 d = dir(fullfile(folder, 'views', '*', 'view_info.mat'));
 vs = struct('view', {}, 'bearing_deg', {}, 'incidence_deg', {}, 'window', {}, 'window_m', {}, ...
-    'image_px', {}, 'image_py', {}, 'status', {}, 'message', {}, 'seconds', {});
+    'image_px', {}, 'image_py', {}, 'status', {}, 'message', {}, 'seconds', {}, 'made', {});
 for i = 1:numel(d)
     try
         s = load(fullfile(d(i).folder, d(i).name), 'row');
@@ -1318,9 +1925,41 @@ for i = 1:numel(d)
         vs(end+1) = struct('view', r.view, 'bearing_deg', r.bearing_deg, 'incidence_deg', r.incidence_deg, ...
             'window', r.window, 'window_m', pick(r, 'window_m', ''), 'image_px', pick(r, 'image_px', NaN), ...
             'image_py', pick(r, 'image_py', NaN), 'status', r.status, 'message', pick(r, 'message', ''), ...
-            'seconds', pick(r, 'seconds', NaN)); %#ok<AGROW>
+            'seconds', pick(r, 'seconds', NaN), 'made', d(i).datenum); %#ok<AGROW>
     catch
     end
+end
+end
+
+function vs = sort_newest(vs)
+% Newest first
+if numel(vs) > 1
+    [~, o] = sort([vs.made], 'descend');
+    vs = vs(o);
+end
+end
+
+function ids = newest_group(vs)
+% For a folder that does not say which views its latest run made: the newest views that were made one after
+% another (each less than 15 minutes after the one before), the way a run makes them
+[t, o] = sort([vs.made], 'descend');
+k = 1;
+while k < numel(t) && t(k) - t(k + 1) <= 15/1440
+    k = k + 1;
+end
+ids = {vs(o(1:k)).view};
+end
+
+function ids = read_last_run(folder)
+% The views the latest run of a dataset folder handled, from the note the run leaves (last_run.json)
+ids = {};
+f = fullfile(folder, 'last_run.json');
+if exist(f, 'file') ~= 2, return; end
+try
+    S = jsondecode(fileread(f));
+    if isfield(S, 'views') && ~isempty(S.views), ids = cellstr(S.views); end
+    ids = ids(:)';
+catch
 end
 end
 
@@ -1349,22 +1988,41 @@ copyfile(src, dst, 'f');
 n = 1;
 end
 
-function [sz, n] = read_model_size(path, up)
-% Size of an .obj model in m, [across height depth], from its vertices alone
-lines = readlines(path);
-v = lines(startsWith(lines, "v "));
-n = numel(v);
-a = sscanf(strjoin(v, newline), 'v %f %f %f ');   % the trailing space steps over each newline
-if numel(a) == 3*n
-    V = reshape(a, 3, n)';
+function s = length_text(m)
+% A length in m as people say it: 830 m, 6.9 km
+if m >= 1000
+    s = sprintf('%.1f km', m/1000);
+elseif m >= 10
+    s = sprintf('%.0f m', m);
 else
-    % Extra columns (vertex colours) or odd spacing: read the first three numbers of each line
-    C = textscan(strjoin(v, newline), 'v %f %f %f %*[^\n]');
-    V = [C{1} C{2} C{3}];
+    s = sprintf('%.1f m', m);
 end
-if isempty(V), error('No vertices found.'); end
-if strcmp(up, 'z'), V = V(:, [1 3 2]); end
-sz = max(V) - min(V);
+end
+
+function s = area_text(m2)
+if m2 >= 1e5
+    s = sprintf('%.1f km^2', m2/1e6);
+else
+    s = sprintf('%.0f m^2', m2);
+end
+end
+
+function P = footprint(bearing, incidence, cx, cz, w, h)
+% The ground a view covers, as a closed outline in map coordinates (x, north).
+% The frame's width lies across the look direction, and its height, seen on
+% the ground, is stretched by 1/cos(incidence) along it.
+b = bearing*pi/180;
+a = [cos(b) sin(b)];              % across, in (x, z)
+s = [sin(b) -cos(b)];             % towards the radar, in (x, z)
+d = h/cos(incidence*pi/180);
+c = [cx cz];
+Q = [c + (w/2)*a + (d/2)*s; c - (w/2)*a + (d/2)*s; c - (w/2)*a - (d/2)*s; c + (w/2)*a - (d/2)*s; c + (w/2)*a + (d/2)*s];
+P = [Q(:, 1), -Q(:, 2)];
+end
+
+function p = to_picks(x)
+% Views picked on the map, from settings that were saved as JSON (one view comes back flat)
+if isempty(x), p = zeros(0, 6); elseif size(x, 2) == 6, p = x; else, p = reshape(x(:), 6, [])'; end
 end
 
 function c = at(c, row, col)

@@ -16,7 +16,7 @@ function res = Run_SAR_From_Contributions(contrib, out_dir, opts)
 %   bw          radar bandwidth [Hz]; sets the HR resolution c/(2B)  (default 500e6).
 %               'auto' picks the bandwidth that makes the image about
 %               target_px pixels across, so objects of any size fill a
-%               similar frame; it is kept between 100 MHz and 2 GHz.
+%               similar frame; it is kept between 1 MHz and 2 GHz.
 %   target_px   image size that bw = 'auto' aims for, in pixels        (default 800)
 %   factors     how many times coarser each LR image is            (default [2 4 8])
 %   seed        seed for the speckle phases                         (default 1)
