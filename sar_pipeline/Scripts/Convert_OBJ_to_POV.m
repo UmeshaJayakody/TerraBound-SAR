@@ -8,6 +8,10 @@ function info = Convert_OBJ_to_POV(obj_path, out_pov_path, opts)
 % (.mtl) describe visual appearance, not radar reflectivity, so they are
 % intentionally ignored; a single finish{} representing the intended
 % surface type is applied to the whole mesh instead (pass via opts.finish).
+% The exception is opts.materials: then the material NAME of each face (its
+% "usemtl" line) picks a radar finish, so e.g. buildings, roads and water
+% respond differently. Without it, or for a file with no "usemtl" lines,
+% the scene is written exactly as before.
 %
 % obj_path: path to the .obj file
 % out_pov_path: path to write the .pov scene to
@@ -34,6 +38,14 @@ function info = Convert_OBJ_to_POV(obj_path, out_pov_path, opts)
 %                 footprint instead of on [0 0 0], for models that are not
 %                 built around the origin (default: false). Ignored if
 %                 look_at is given.
+%   materials     radar finish per material name (default: off, one finish
+%                 for the whole mesh). 'auto' looks every name up in
+%                 Radar_Materials (concrete, metal, vegetation, grass, sand,
+%                 soil, land, water, sea, asphalt). A struct sets names
+%                 directly: materials.roof = 'metal' (a Radar_Materials name)
+%                 or materials.roof = 'finish {...}'. Names it does not cover
+%                 are looked up in Radar_Materials; anything still unknown,
+%                 and faces before the first "usemtl", get opts.finish.
 %
 % Any size of file is accepted: it is read in blocks (see Read_OBJ), and the
 % triangles are put in order by where they are before they are cut into the
@@ -84,13 +96,29 @@ end
 
 finish_str = g('finish','finish {reflection {0.4} ambient 0 diffuse 0.35 specular 0.5 roughness 0.01}');
 
+% Radar materials, if asked for and the file names any (see opts.materials):
+% tm is each triangle's index into mat_finish, 0 for opts.finish
+tm = zeros(size(tri, 1), 1, 'int32');
+mat_finish = {};
+mat_info = struct('name', {}, 'finish', {}, 'n_triangles', {});
+materials = g('materials', []);
+if ~isempty(materials) && isfield(rd, 'material') && any(rd.material > 0)
+    tm = rd.material;
+    [mat_finish, mat_info] = material_finishes(rd.material_names, materials, finish_str, tm);
+    for k = 1:numel(mat_info)
+        fprintf('  material %-14s %9d triangles  %s\n', mat_info(k).name, mat_info(k).n_triangles, mat_info(k).finish);
+    end
+end
+
 % Only vertices that a face uses and that are real numbers count towards the
 % size: an unused or broken vertex must not stretch the frame
 used = false(n_v, 1);
 used(tri(:)) = true;
 badv = ~all(isfinite(V), 2);
 if any(badv & used)
-    tri = tri(~any(badv(tri), 2), :);
+    keep = ~any(badv(tri), 2);
+    tri = tri(keep, :);
+    tm = tm(keep);
     used = false(n_v, 1);
     used(tri(:)) = true;
 end
@@ -162,7 +190,18 @@ plan_map = plan_grid(V, tri, xr, zr, yr);
 % that the objects cut from them are small patches, not pieces scattered over
 % the whole scene. Views then only have to load the patches they can see.
 progress('Ordering the triangles by position ...');
-tri = tri(spatial_order(V, tri, xr, zr), :);
+ord = spatial_order(V, tri, xr, zr);
+if ~isempty(mat_finish)
+    % One material per object: group by material, keeping the position order
+    % within each (sort is stable)
+    [~, j] = sort(tm(ord));
+    ord = ord(j);
+end
+tri = tri(ord, :);
+tm = tm(ord);
+cur_mat = tm(min(1, end));
+chunk_finish = finish_str;
+if cur_mat > 0, chunk_finish = mat_finish{cur_mat}; end
 
 n_faces_total = size(tri,1);
 localIdx = zeros(n_v,1);       % 0 = vertex not in current chunk, else its local 1-based index
@@ -181,11 +220,11 @@ for t = 1:n_faces_total
     g1 = tri(t,1); g2 = tri(t,2); g3 = tri(t,3);
 
     newCount = (localIdx(g1)==0) + (localIdx(g2)==0) + (localIdx(g3)==0);
-    if nChunkVerts > 0 && nChunkVerts + newCount > max_verts
+    if nChunkVerts > 0 && (nChunkVerts + newCount > max_verts || tm(t) ~= cur_mat)
         n_chunks = n_chunks + 1;
         [c_start, c_stop, c_box] = grow(c_start, c_stop, c_box, n_chunks);
         c_start(n_chunks) = ftell(fid);
-        c_box(n_chunks, :) = write_mesh_chunk(fid, V, chunkVertGlobal(1:nChunkVerts), chunkTris(1:nChunkTris,:), finish_str);
+        c_box(n_chunks, :) = write_mesh_chunk(fid, V, chunkVertGlobal(1:nChunkVerts), chunkTris(1:nChunkTris,:), chunk_finish);
         c_stop(n_chunks) = ftell(fid);
         localIdx(chunkVertGlobal(1:nChunkVerts)) = 0;
         nChunkVerts = 0;
@@ -194,6 +233,10 @@ for t = 1:n_faces_total
             progress(sprintf('Writing the scene: %.0f%%', 100*t/n_faces_total));
             next_report = t + max(1, floor(n_faces_total/50));
         end
+    end
+    if tm(t) ~= cur_mat
+        cur_mat = tm(t);
+        if cur_mat > 0, chunk_finish = mat_finish{cur_mat}; else, chunk_finish = finish_str; end
     end
 
     if localIdx(g1)==0
@@ -215,7 +258,7 @@ if nChunkVerts > 0
     n_chunks = n_chunks + 1;
     [c_start, c_stop, c_box] = grow(c_start, c_stop, c_box, n_chunks);
     c_start(n_chunks) = ftell(fid);
-    c_box(n_chunks, :) = write_mesh_chunk(fid, V, chunkVertGlobal(1:nChunkVerts), chunkTris(1:nChunkTris,:), finish_str);
+    c_box(n_chunks, :) = write_mesh_chunk(fid, V, chunkVertGlobal(1:nChunkVerts), chunkTris(1:nChunkTris,:), chunk_finish);
     c_stop(n_chunks) = ftell(fid);
 end
 
@@ -232,6 +275,39 @@ info.findings = resolved.findings;
 info.warnings = resolved.warnings;
 info.plan = plan_map;
 info.chunks = struct('start', c_start(1:n_chunks), 'stop', c_stop(1:n_chunks), 'box', c_box(1:n_chunks, :));
+info.materials = mat_info;
+end
+
+function [fin, list] = material_finishes(names, materials, default_finish, tm)
+% The finish of each material name in the file, from opts.materials and
+% Radar_Materials, and a summary of what each got
+fin = cell(numel(names), 1);
+list = struct('name', {}, 'finish', {}, 'n_triangles', {});
+counts = accumarray(double(tm(tm > 0)), 1, [numel(names) 1]);
+for k = 1:numel(names)
+    nm = names{k};
+    f = '';
+    if isstruct(materials)
+        field = matlab.lang.makeValidName(nm);
+        if isfield(materials, field)
+            v = strtrim(char(materials.(field)));
+            if startsWith(v, 'finish')
+                f = v;
+            else
+                f = Radar_Materials(v);
+                if isempty(f)
+                    warning('Convert_OBJ_to_POV:material', 'Material "%s": "%s" is not a finish or a Radar_Materials name; using the default finish.', nm, v);
+                end
+            end
+        end
+    end
+    if isempty(f), f = Radar_Materials(nm); end
+    % Blender renames a second material of the same name "concrete.001"
+    if isempty(f), f = Radar_Materials(regexprep(nm, '\.\d{3}$', '')); end
+    if isempty(f), f = default_finish; end
+    fin{k} = f;
+    list(end+1) = struct('name', nm, 'finish', f, 'n_triangles', counts(k)); %#ok<AGROW>
+end
 end
 
 function m = plan_grid(V, tri, xr, zr, yr)
