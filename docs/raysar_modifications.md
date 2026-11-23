@@ -1,6 +1,6 @@
 # Changes to RaySAR 1.2
 
-`RaySAR_Workspace/RaySAR/` holds the MATLAB part of RaySAR 1.2 by Stefan Auer (Remote Sensing Technology Institute, German Aerospace Center (DLR)). It comes from the [RaySAR v1.2 release](https://github.com/StefanJAuer/RaySAR/releases/tag/1.2), in `MATLAB_part/MATLAB_code`. RaySAR is licensed under the GNU AGPL v3, and the AGPL asks that modified files say they were changed. This page lists every change this project made to those files in 2026. The comparison ignores line endings.
+`sar_pipeline/RaySAR/` holds the MATLAB part of RaySAR 1.2 by Stefan Auer (Remote Sensing Technology Institute, German Aerospace Center (DLR)). It comes from the [RaySAR v1.2 release](https://github.com/StefanJAuer/RaySAR/releases/tag/1.2), in `MATLAB_part/MATLAB_code`. RaySAR is licensed under the GNU AGPL v3, and the AGPL asks that modified files say they were changed. This page lists every change this project made to those files in 2026. The comparison ignores line endings.
 
 None of the changes touch how RaySAR computes anything. The reflectivity maps, the elevation and tomography tools and the 3D exports work exactly as in 1.2.
 

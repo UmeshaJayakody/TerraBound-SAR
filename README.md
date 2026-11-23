@@ -6,9 +6,9 @@ Real matched HR/LR SAR image pairs of the same scene essentially don't exist pub
 
 ## Start here
 
-**→ [`RaySAR_Workspace/README.md`](RaySAR_Workspace/README.md) — the actual pipeline: theory and how to run each GUI.**
+**→ [`sar_pipeline/README.md`](sar_pipeline/README.md) — the actual pipeline: theory and how to run each GUI.**
 
-`RaySAR_Workspace/` is fully self-contained (the ray-tracing engine, its support library, and RaySAR's MATLAB code are all bundled inside it) and is the only folder published to this project's GitHub repo.
+`sar_pipeline/` is fully self-contained (the ray-tracing engine, its support library, and RaySAR's MATLAB code are all bundled inside it) and is the only folder published to this project's GitHub repo.
 
 ## What happens in each stage, theoretically
 
@@ -24,4 +24,4 @@ Building real geometry instead of hand-placed boxes — converting a `.obj` 3D m
 
 ![OBJ to POV conversion process: parse geometry, triangulate faces, fix ground height to Y=0, split into small mesh chunks, write the .pov scene file](docs/obj_to_pov_conversion.png)
 
-See `RaySAR_Workspace/README.md` for exactly how to run each of these stages through its GUI.
+See `sar_pipeline/README.md` for exactly how to run each of these stages through its GUI.

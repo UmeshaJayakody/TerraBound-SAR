@@ -10,7 +10,7 @@ function info = Convert_Sample_Scene(name, obj_folder, scenes_folder)
 %                the repository. Default: the TERRABOUND_OBJ_DIR environment
 %                variable.
 % scenes_folder: where the .pov scene is written
-%                (default: RaySAR_Workspace/Scenes).
+%                (default: sar_pipeline/Scenes).
 %
 % Returns the info struct from Convert_OBJ_to_POV.
 %

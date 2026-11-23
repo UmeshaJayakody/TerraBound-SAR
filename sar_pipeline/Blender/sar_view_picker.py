@@ -433,7 +433,7 @@ if bpy is not None:
         s = _settings(context)
         ws = bpy.path.abspath(s.workspace)
         if not s.workspace or not os.path.isdir(os.path.join(ws, "Scripts")):
-            raise RuntimeError("Set 'Project folder' to the RaySAR_Workspace folder (the one containing Scripts).")
+            raise RuntimeError("Set 'Project folder' to the sar_pipeline folder (the one containing Scripts).")
         ws = ws.replace("\\", "/").rstrip("/")
         jp = json_path.replace("\\", "/")
         cmd = "addpath('%s/Scripts'); Make_SAR_From_Blender('%s');" % (ws.replace("'", "''"), jp.replace("'", "''"))
@@ -525,7 +525,7 @@ if bpy is not None:
         matlab: bpy.props.StringProperty(name="MATLAB", default="matlab", subtype="FILE_PATH",
                                          description="The MATLAB program (just 'matlab' if it is on the PATH)")
         workspace: bpy.props.StringProperty(name="Project folder", default="", subtype="DIR_PATH",
-                                            description="The RaySAR_Workspace folder (the one with Scripts and SAR_Imaging)")
+                                            description="The sar_pipeline folder (the one with Scripts and SAR_Imaging)")
         out_dir: bpy.props.StringProperty(name="Save in", default="//sar_out", subtype="DIR_PATH",
                                           description="Where the SAR images and the views file are written")
         bandwidth_mhz: bpy.props.FloatProperty(name="Bandwidth [MHz]", default=500.0, min=10.0, max=5000.0,

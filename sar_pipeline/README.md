@@ -42,9 +42,9 @@ The result of running all four stages once: one `HR.png` and several `LR_<tier>.
 ## Part 2 — Setup
 
 1. **Install MATLAB** (Windows). No toolboxes are required — everything here is written to run on a bare install. Check what you have with `ver` at the MATLAB prompt.
-2. **Open MATLAB and set the current folder to this repo** (`RaySAR_Workspace`), then put its code folders on the MATLAB path:
+2. **Open MATLAB and set the current folder to this repo** (`sar_pipeline`), then put its code folders on the MATLAB path:
    ```matlab
-   cd('path/to/RaySAR_Workspace')
+   cd('path/to/sar_pipeline')
    addpath('RaySAR');
    addpath('Scripts');
    ```

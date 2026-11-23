@@ -7,17 +7,17 @@
 # Scripts against a scene's Contributions.txt. Keep the final HR/LR PNG
 # results (small, meant to be viewed on GitHub) but drop the bulky
 # intermediate/raw data.
-RaySAR_Workspace/**/Contributions.txt
-RaySAR_Workspace/**/Maps/Frames/**
-RaySAR_Workspace/**/Maps/Image_data/**
-RaySAR_Workspace/**/*.tif
-RaySAR_Workspace/**/*.mat
+sar_pipeline/**/Contributions.txt
+sar_pipeline/**/Maps/Frames/**
+sar_pipeline/**/Maps/Image_data/**
+sar_pipeline/**/*.tif
+sar_pipeline/**/*.mat
 
 # Results folders the scripts and GUIs write (regenerate them, don't commit them)
-RaySAR_Workspace/Scenes/*_Results/
-RaySAR_Workspace/Test_Runs/Step_Results/
-RaySAR_Workspace/**/SAR_Results/
-RaySAR_Workspace/**/blender_handoff/
+sar_pipeline/Scenes/*_Results/
+sar_pipeline/Test_Runs/Step_Results/
+sar_pipeline/**/SAR_Results/
+sar_pipeline/**/blender_handoff/
 sar_live.json
 
 # Python

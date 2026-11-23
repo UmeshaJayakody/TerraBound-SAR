@@ -8,9 +8,9 @@ function Run_Reflectivity_Pipeline(name, contrib_file, out_folder)
 % name:         scene, e.g. 'Street_01' or 'Street_01_Coherent'. Call with
 %               no arguments to list them all.
 % contrib_file: Contributions.txt from rendering that scene
-%               (default: RaySAR_Workspace/Scenes/Contributions.txt, where
+%               (default: sar_pipeline/Scenes/Contributions.txt, where
 %               the RaySAR GUI's Rendering button writes it).
-% out_folder:   results folder (default: RaySAR_Workspace/Scenes/<name>_Results).
+% out_folder:   results folder (default: sar_pipeline/Scenes/<name>_Results).
 %
 % For realistic SAR images formed from raw radar data, use
 % SAR_Imaging/Run_SAR_From_Contributions instead.

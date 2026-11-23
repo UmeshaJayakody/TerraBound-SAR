@@ -638,7 +638,7 @@ else
 end
 
 
-% --- Local helper: launch pvengine.exe safely (added for RaySAR_Workspace).
+% --- Local helper: launch pvengine.exe safely (added for TerraBound SAR).
 function launch_pvengine(model_path, pov_file)
 % Fixes three real usability problems with the original "system('pvengine.exe')"
 % call used by both the "Manual editing" and "Rendering" buttons:
@@ -678,7 +678,7 @@ end
 cd(startdir);
 
 
-% --- Local helper: render a scene headlessly (added for RaySAR_Workspace).
+% --- Local helper: render a scene headlessly (added for TerraBound SAR).
 function render_headless(model_path, pov_file)
 % Renders pov_file with the RaySAR-adapted engine using the same
 % non-interactive, command-line call that has proven reliable from a
@@ -699,7 +699,7 @@ if ~isempty(strfind(tasklist_out, 'pvengine.exe'))
 end
 
 % POV_Ray/include sits next to Model_path's parent folder
-% (.../RaySAR_Workspace/Scenes -> .../RaySAR_Workspace/POV_Ray/include).
+% (.../sar_pipeline/Scenes -> .../sar_pipeline/POV_Ray/include).
 workspace_root = fileparts(model_path);
 include_path = fullfile(workspace_root, 'POV_Ray', 'include');
 
