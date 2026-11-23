@@ -38,11 +38,13 @@ class ViewSettings:
     bandwidth_mhz: float = 500.0                         # 0.30 m resolution
     factors: list = field(default_factory=lambda: [2, 4, 8])
     mode: str = "random"                                 # "random" or "grid"
-    n_views: int = 12                                    # random mode: views per area
+    n_views: int = 16                                    # random mode: views per area
     bearings: list = field(default_factory=lambda: [0, 90, 180, 270])   # grid mode
-    incidence_range: list = field(default_factory=lambda: [30, 60])
+    # 20-50 degrees: the range X-band SAR satellites image at (ICEYE 20-35, Capella 25-50)
+    incidence_range: list = field(default_factory=lambda: [20, 50])
     incidences: list | None = None                       # grid mode: fixed list instead of the range
-    window_m: float = 150.0                              # side of the ground window
+    window_m: float = 100.0                              # side of the ground window: 667 px at 0.30 m,
+                                                         # within the 256-1000 px patches SR models train on
     structure_bias: float = 0.7                          # random mode: share of views centred on buildings
     seed: int = 1
     max_px: int = 2000                                   # the pipeline leaves out larger images

@@ -80,9 +80,21 @@ The finished views of the selected area: the HR image and the LR ×2, ×4 and ×
 | Resolution | 0.30 m (500 MHz) | HR resolution. The pixel is half of it. |
 | Lower-resolution factors | 2 4 8 | LR images made with 1/f of the bandwidth and 1/f of the aperture. |
 | Views | Random | **Random:** varied places, bearings and angles, mostly centred on buildings. **Grid:** windows that cover the whole area from each bearing in the list. |
-| Views per area | 12 | Random mode. |
-| Window side | 150 m | Side of the ground square each image covers. At 0.30 m, 150 m is about 1000 px; the largest is about 285 m (2000 px). |
-| Incidence | 30–60° | Angle of the radar from the vertical, drawn at random in this range for each view. |
+| Views per area | 16 | Random mode. |
+| Window side | 100 m | Side of the ground square each image covers. At 0.30 m, 100 m is about 670 px, within the 256–1000 px patches super-resolution models usually train on. The largest is about 285 m (2000 px). |
+| Incidence | 20–50° | Angle of the radar from the vertical, drawn at random in this range for each view. Real X-band satellites image at about these angles (ICEYE 20–35°, Capella 25–50°). |
+
+The defaults follow real X-band SAR satellites, the same band as RaySAR's 3.1 cm wavelength:
+- The **HR** image (0.30 m) matches their finest spotlight modes: TerraSAR-X Staring SpotLight (0.25 m) and ICEYE Dwell Precise (0.25 m).
+- The **LR** images match coarser modes:
+
+  | LR | Resolution | Comparable modes |
+  |---|---|---|
+  | ×2 | 0.6 m | Capella Spotlight, ICEYE Dwell Fine |
+  | ×4 | 1.2 m | ICEYE Spot, Capella Stripmap |
+  | ×8 | 2.4 m | TerraSAR-X SpotLight and StripMap |
+
+- Their scenes are kilometres across (4–5 km spotlight). Training uses patches cut from such scenes, so many places of 0.5–1 km, each with patch-sized windows, give a more varied dataset than a few large ones.
 | Grid bearings | 0 90 180 270 | Grid mode. Compass direction from the scene to the radar (0 = the radar is north of the scene). |
 | Seed | 1 | Makes the random views and the speckle repeatable. |
 | Ground grid | 5 m | Spacing of the terrain mesh. Larger areas are coarsened automatically to stay below 600,000 ground triangles. |
