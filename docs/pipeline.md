@@ -203,4 +203,4 @@ Measured on this computer:
 - one 40 m Street_01 view: about 50 s, render plus all images;
 - two 140 m two-tower views at 0.5 m: 235 s.
 
-Most of the time goes into backprojection, which grows with the number of image pixels times the number of pulses. Plan on one to three minutes per view at 0.30 m with 150 m windows.
+Most of the time goes into backprojection, which grows with the number of image pixels times the number of pulses. Plan on about one to three minutes per view at 0.30 m with 100–150 m windows.
