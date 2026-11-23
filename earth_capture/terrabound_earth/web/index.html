@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Capture</title>
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/static/style.css">
+<script>window.TOKEN = "__TOKEN__";</script>
+</head>
+<body>
+<header>
+  <div class="brand"><strong>Earth Capture</strong><span>TerraBound SAR</span></div>
+  <div id="tools" class="tools"></div>
+</header>
+
+<div id="main">
+  <div id="map"></div>
+
+  <aside id="panel">
+    <!-- 1. Choose an area -->
+    <section>
+      <h2><span class="step">1</span>Choose an area</h2>
+      <form id="search-form" class="row">
+        <input id="search" type="search" placeholder="Search a place, e.g. Colombo Port" autocomplete="off">
+        <button type="submit">Search</button>
+      </form>
+      <ul id="search-results" class="list compact"></ul>
+      <div class="row">
+        <button id="draw-btn" type="button" title="Drag on the map to draw a rectangle">Draw on map</button>
+        <button id="square-btn" type="button" title="A square in the middle of the map">Square here</button>
+        <input id="square-size" type="number" min="100" max="2000" step="50" value="500" title="Side in metres"> <span class="muted">m</span>
+      </div>
+      <div id="area-card" class="card hidden">
+        <label>Name <input id="area-name" type="text" maxlength="60"></label>
+        <div id="area-facts" class="facts"></div>
+        <div id="area-problems" class="problems"></div>
+        <div class="row">
+          <button id="add-btn" class="primary" type="button">Add to queue</button>
+          <button id="clear-area-btn" type="button">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Queue -->
+    <section>
+      <h2><span class="step">2</span>Queue <span id="queue-count" class="muted"></span></h2>
+      <ul id="queue" class="list"></ul>
+      <div class="row wrap">
+        <button id="suggest-btn" type="button">Suggest places…</button>
+        <button id="prepare-btn" type="button" title="Download the data and build the scenes now; the SAR images can be made later, offline">Download data</button>
+        <button id="run-btn" class="primary" type="button">Make SAR images</button>
+        <button id="stop-btn" class="danger hidden" type="button">Stop</button>
+      </div>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress-sec" class="hidden">
+      <h2>Progress</h2>
+      <div id="task" class="facts"></div>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <details id="log-box"><summary>Log</summary><pre id="log"></pre></details>
+    </section>
+
+    <!-- 3. Results -->
+    <section>
+      <h2><span class="step">3</span>Results <span id="results-of" class="muted"></span></h2>
+      <div id="results" class="gallery"><p class="muted">Select an area in the queue to see its images.</p></div>
+    </section>
+
+    <!-- 4. Export -->
+    <section>
+      <h2><span class="step">4</span>Export the dataset</h2>
+      <p class="muted">Every finished area, split into train / val / test by place, with metadata and licence files.</p>
+      <div class="row">
+        <label class="inline"><input type="radio" name="lr-size" value="aligned" checked> LR same size as HR</label>
+        <label class="inline"><input type="radio" name="lr-size" value="native"> LR smaller (÷ factor)</label>
+      </div>
+      <div class="row">
+        <button id="export-btn" class="primary" type="button">Export dataset</button>
+        <button id="open-datasets-btn" type="button">Open folder</button>
+      </div>
+      <div id="export-result" class="facts"></div>
+    </section>
+
+    <!-- Settings -->
+    <section>
+      <details id="settings">
+        <summary><h2 class="inline">Settings</h2></summary>
+        <form id="settings-form" class="grid">
+          <label>Resolution
+            <select name="bandwidth_mhz">
+              <option value="500">0.30 m (500 MHz)</option>
+              <option value="300">0.50 m (300 MHz)</option>
+              <option value="150">1.0 m (150 MHz)</option>
+              <option value="75">2.0 m (75 MHz)</option>
+            </select></label>
+          <label>Lower-resolution factors <input name="factors" type="text" value="2 4 8"></label>
+          <label>Views
+            <select name="mode"><option value="random">Random (varied angles)</option><option value="grid">Grid (cover the area)</option></select></label>
+          <label>Views per area <input name="n_views" type="number" min="1" max="500"></label>
+          <label>Window side (m) <input name="window_m" type="number" min="10" max="2000" step="10"></label>
+          <label>Incidence from (°) <input name="inc_lo" type="number" min="10" max="85"></label>
+          <label>Incidence to (°) <input name="inc_hi" type="number" min="10" max="85"></label>
+          <label>Grid bearings (°) <input name="bearings" type="text"></label>
+          <label>Seed <input name="seed" type="number" min="0"></label>
+          <label>Ground grid (m) <input name="grid_m" type="number" min="1" max="30" step="0.5"></label>
+          <div class="row full"><button class="primary" type="submit">Save settings</button><span id="settings-msg" class="muted"></span></div>
+        </form>
+      </details>
+    </section>
+
+    <footer class="muted small">
+      Map data © OpenStreetMap contributors · Sentinel-2 cloudless by EOX (Copernicus Sentinel data) ·
+      Elevation: Copernicus DEM GLO-30 · Land cover: ESA WorldCover · SAR: RaySAR (S. Auer, DLR)
+    </footer>
+  </aside>
+</div>
+
+<dialog id="suggest-dlg">
+  <form method="dialog" id="suggest-form" class="grid">
+    <h2 class="full">Suggest places</h2>
+    <label>Kind <select name="kind" id="suggest-kind"></select></label>
+    <label>Where
+      <select name="where"><option value="view">The area shown on the map</option><option value="world">Anywhere in the world</option></select></label>
+    <label>How many <input name="n" type="number" min="1" max="50" value="5"></label>
+    <label>Square side (m) <input name="side_m" type="number" min="100" max="2000" step="50" value="500"></label>
+    <label>Seed <input name="seed" type="number" min="0" value="1"></label>
+    <div class="row full"><button class="primary" value="ok">Find and add</button><button value="cancel">Cancel</button></div>
+  </form>
+</dialog>
+
+<div id="lightbox" class="hidden"><div class="lb-inner"><img id="lb-img" alt=""><div id="lb-cap"></div></div></div>
+
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
