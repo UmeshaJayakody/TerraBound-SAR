@@ -15,7 +15,9 @@
 here = fileparts(mfilename('fullpath'));
 addpath(here);
 
-contrib = 'D:/FYP/RaySAR_Workspace/Scenes/Contributions.txt';
+% Render Scenes/Street_01.pov first (RaySAR GUI, Rendering); the engine writes
+% Contributions.txt next to the scene.
+contrib = fullfile(fileparts(here), 'Scenes', 'Contributions.txt');
 out_dir = fullfile(here, 'results', 'Street_01');
 
 % X-band at RaySAR's own 0.031 m wavelength, 500 MHz of bandwidth and an
