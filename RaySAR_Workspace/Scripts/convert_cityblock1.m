@@ -1,9 +1,0 @@
-addpath('D:/FYP/RaySAR_Workspace/Scripts');
-
-opts.finish = 'finish {reflection {0.4} ambient 0 diffuse 0.35 specular 0.5 roughness 0.01}';
-opts.up_axis = 'z'; % 3ds Max native export (Max2Obj) -- Z is up, not Y
-
-Convert_OBJ_to_POV( ...
-    'D:/FYP/object files/City1 Block 1.obj', ...
-    'D:/FYP/RaySAR_Workspace/Scenes/CityBlock1_01.pov', ...
-    opts);

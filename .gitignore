@@ -1,5 +1,5 @@
 # Local-only project material -- kept for reference on this machine, not part
-# of the published pipeline. See README.md for why these aren't tracked.
+# of the published pipeline.
 /.claude/
 /RaySAR_1.2/
 
@@ -7,11 +7,29 @@
 # Scripts against a scene's Contributions.txt. Keep the final HR/LR PNG
 # results (small, meant to be viewed on GitHub) but drop the bulky
 # intermediate/raw data.
-RaySAR_Workspace/**/Contributions.txt
-RaySAR_Workspace/**/Maps/Frames/**
-RaySAR_Workspace/**/Maps/Image_data/**
-RaySAR_Workspace/**/*.tif
-RaySAR_Workspace/**/*.mat
+sar_pipeline/**/Contributions.txt
+sar_pipeline/**/Maps/Frames/**
+sar_pipeline/**/Maps/Image_data/**
+sar_pipeline/**/*.tif
+sar_pipeline/**/*.mat
+
+# Results folders the scripts and GUIs write (regenerate them, don't commit them)
+sar_pipeline/Scenes/*_Results/
+sar_pipeline/Test_Runs/Step_Results/
+sar_pipeline/**/SAR_Results/
+sar_pipeline/**/blender_handoff/
+sar_live.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Earth Capture: downloaded map data and the datasets it makes
+earth_capture/.cache/
+/runs/
+/datasets/
 
 # OS / editor / MATLAB cruft
 Thumbs.db
