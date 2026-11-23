@@ -10,8 +10,10 @@ function Launch_Blender(blender_exe, obj, up, handoff_dir, opts)
 %              exports; SAR_Dataset_GUI reads them from here
 % opts:        bandwidth_mhz and factors, handed to Blender's own "Create SAR
 %              images" button, and scale, metres per unit of the file (default
-%              1), so a model in inches or centimetres opens at its real size
-%              (all optional)
+%              1), so a model in inches or centimetres opens at its real size,
+%              and materials ('auto' for a scene whose material names are
+%              radar materials, e.g. from Earth Capture; Blender then keeps
+%              them when it sends the model back) (all optional)
 %
 % In Blender: move the camera, or add more (Add SAR view camera), then click
 % "Send views to the SAR window" in the SAR tab of the sidebar (press N).
@@ -30,6 +32,7 @@ cfg = struct('addon_dir', slashes(addon_dir), 'obj', slashes(obj), 'up', up, ...
     'workspace', slashes(root), 'matlab', slashes(fullfile(matlabroot, 'bin', 'matlab.exe')), ...
     'out_dir', slashes(handoff_dir), 'bandwidth_mhz', getopt(opts, 'bandwidth_mhz', 500), ...
     'factors', getopt(opts, 'factors', [2 4 8]), 'scale', getopt(opts, 'scale', 1));
+if isfield(opts, 'materials') && ~isempty(opts.materials), cfg.materials = opts.materials; end
 cfg_path = fullfile(handoff_dir, 'blender_setup.json');
 fid = fopen(cfg_path, 'w');
 fwrite(fid, jsonencode(cfg, 'PrettyPrint', true), 'char');
