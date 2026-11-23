@@ -45,7 +45,9 @@ OBJ_MATERIALS = { ...
     'Vegetation, rough terrain',     'finish {reflection {0.05} ambient 0 diffuse 0.6 specular 0.05 roughness 0.3}'
     'Sandy terrain (desert)',        'finish {reflection {0.15} ambient 0 diffuse 0.55 specular 0.15 roughness 0.15}'
     'Soil, gravel terrain',          'finish {reflection {0.2} ambient 0 diffuse 0.5 specular 0.2 roughness 0.1}'
-    'Custom (type it below)',        ''};
+    'Custom (type it below)',        ''
+    'By material name in the file',  'materials:auto'};   % each usemtl name picks its finish (Radar_Materials)
+MAT_CUSTOM = find(strcmp(OBJ_MATERIALS(:, 1), 'Custom (type it below)'));
 GROUNDS = { ...
     'Land (default)',                'finish {reflection {0.3} ambient 0 diffuse 0.15 specular 0}'
     'Water, pond',                   'finish {reflection {0.35} ambient 0 diffuse 0.3 specular 0.5 roughness 0.05}'
@@ -131,16 +133,19 @@ stack.Padding = [0 0 0 0];
 msg = uilabel(main, 'Text', '', 'WordWrap', 'on', 'FontWeight', 'bold', 'Tag', 'message');
 at(msg, 2, 2);
 
-nav = uigridlayout(main, [1 6]);
+nav = uigridlayout(main, [1 7]);
 at(nav, 3, 2);
-nav.ColumnWidth = {130, 130, '1x', 100, 100, 4};
+nav.ColumnWidth = {130, 130, '1x', 150, 100, 100, 4};
 nav.Padding = [0 4 0 4];
 save_btn = uibutton(nav, 'push', 'Text', 'Save settings...', 'ButtonPushedFcn', @(~, ~) do_save());
 load_btn = uibutton(nav, 'push', 'Text', 'Load settings...', 'ButtonPushedFcn', @(~, ~) do_load());
 uilabel(nav, 'Text', '');
+earth_btn = uibutton(nav, 'push', 'Text', 'Real world (map)...', 'Tag', 'earth', ...
+    'Tooltip', 'Pick real places on a world map and make their SAR images (Earth Capture)', ...
+    'ButtonPushedFcn', @(~, ~) open_earth_capture());
 back_btn = uibutton(nav, 'push', 'Text', '< Back', 'ButtonPushedFcn', @(~, ~) goto_step(step - 1));
 next_btn = uibutton(nav, 'push', 'Text', 'Next >', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) do_next());
-at(save_btn, 1, 1); at(load_btn, 1, 2); at(back_btn, 1, 4); at(next_btn, 1, 5);
+at(save_btn, 1, 1); at(load_btn, 1, 2); at(earth_btn, 1, 4); at(back_btn, 1, 5); at(next_btn, 1, 6);
 
 % Each step is a grid in the same cell of the stack; only one is visible at a time
 panels = gobjects(1, 6);
@@ -666,7 +671,7 @@ goto_step(1);
     end
 
     function update_custom()
-        cust_obj.Enable = mat_drop.Value == size(OBJ_MATERIALS, 1);
+        cust_obj.Enable = mat_drop.Value == MAT_CUSTOM;
         cust_gnd.Enable = gnd_drop.Value == size(GROUNDS, 1);
     end
 
@@ -746,6 +751,15 @@ goto_step(1);
         for q = 1:numel(resolved.warnings), lines{end+1} = ['Note: ' resolved.warnings{q}]; end %#ok<AGROW>
         if resolved.auto_up && ~isnan(analysis.facing(2)) && resolved.size_m(2) > max(resolved.size_m([1 3])) && resolved.size_m(2) > 100
             lines{end+1} = 'Note: it is taller than it is wide. If it is lying on its side, change "Which way is up".';
+        end
+        if isfield(analysis.info, 'material_names') && ~isempty(analysis.info.material_names)
+            names = analysis.info.material_names;
+            known = names(cellfun(@(n) ~isempty(Radar_Materials(regexprep(n, '\.\d{3}$', ''))), names));
+            lines{end+1} = sprintf('Materials named in the file: %s.', strjoin(names(1:min(end, 12)), ', '));
+            if ~isempty(known)
+                lines{end+1} = sprintf(['%d of them are radar materials (%s). Choose "By material name in the file" ' ...
+                    'under Object surface to give each its own response.'], numel(known), strjoin(known(1:min(end, 8)), ', '));
+            end
         end
         model_info.Text = lines;
     end
@@ -835,8 +849,15 @@ goto_step(1);
         rx = cx + k*sind(b); ry = -cz + k*cosd(b);       % the radar sits on the side the direction names
         plot(map_ax, [rx cx], [ry -cz], '-', 'Color', blue, 'LineWidth', 1.5, 'Tag', 'overlay', 'PickableParts', 'none');
         plot(map_ax, rx, ry, '^', 'MarkerSize', 11, 'MarkerFaceColor', blue, 'MarkerEdgeColor', blue, 'Tag', 'overlay', 'PickableParts', 'none');
-        pick_info.Text = sprintf('This view covers %.0f m across and %.0f m along the ground, about %.0f x %.0f pixels at 0.30 m resolution.', ...
-            w, d, w/0.15, max(d, h)/0.15);
+        if strcmp(res_drop.Value, 'manual')
+            pix = 299792458/(2*bw_field.Value*1e6)/2;
+            res_text = sprintf('%.2f m resolution', 2*pix);
+        else
+            pix = 0.15;
+            res_text = '0.30 m resolution (the automatic resolution depends on the object)';
+        end
+        pick_info.Text = sprintf('This view covers %.0f m across and %.0f m along the ground, about %.0f x %.0f pixels at %s.', ...
+            w, d, w/pix, max(d, h)/pix, res_text);
     end
 
     function map_click(ev)
@@ -913,6 +934,24 @@ goto_step(1);
     function d = blender_dir()
         % Where Blender and this window hand things to each other
         d = fullfile(strtrim(out_field.Value), 'blender_handoff');
+    end
+
+    function open_earth_capture()
+        % Earth Capture (earth_capture/ next to sar_pipeline/) builds real-world
+        % scenes from open map data and runs them through this same pipeline
+        earth = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'earth_capture');
+        pyw = fullfile(earth, '.venv', 'Scripts', 'pythonw.exe');
+        if ~isfile(pyw)
+            say('error', sprintf(['Earth Capture is not installed yet. In a terminal, run:  ' ...
+                'powershell -ExecutionPolicy Bypass -File "%s"'], fullfile(earth, 'install.ps1')));
+            return
+        end
+        [status, out] = system(sprintf('cd /d "%s" && start "" "%s" -m terrabound_earth', earth, pyw));
+        if status ~= 0
+            say('error', ['Could not start Earth Capture: ' strtrim(out)]);
+        else
+            say('info', 'Earth Capture is opening in its own window.');
+        end
     end
 
     function open_blender()
@@ -1588,7 +1627,7 @@ goto_step(1);
                 if isempty(strtrim(out_field.Value))
                     m = 'Choose a folder to save the images in.'; return
                 end
-                if mat_drop.Value == size(OBJ_MATERIALS, 1) && ~startsWith(strtrim(cust_obj.Value), 'finish')
+                if mat_drop.Value == MAT_CUSTOM && ~startsWith(strtrim(cust_obj.Value), 'finish')
                     m = 'The custom object surface must be a POV-Ray finish, starting with "finish {".'; return
                 end
                 if gnd_drop.Value == size(GROUNDS, 1) && ~startsWith(strtrim(cust_gnd.Value), 'finish')
@@ -1684,7 +1723,14 @@ goto_step(1);
             opts.up_axis = cfg.up;
             opts.scale = ternary(strcmp(cfg.units, 'auto'), 'auto', ternary(strcmp(cfg.units, 'custom'), cfg.units_custom, str2double(cfg.units)));
         end
-        opts.finish = ternary(cfg.material == size(OBJ_MATERIALS, 1), cfg.custom_obj, OBJ_MATERIALS{cfg.material, 2});
+        if strcmp(OBJ_MATERIALS{cfg.material, 2}, 'materials:auto')
+            % Each material name of the file picks its finish; faces without a
+            % known name get the default (concrete)
+            opts.materials = 'auto';
+            opts.finish = OBJ_MATERIALS{1, 2};
+        else
+            opts.finish = ternary(cfg.material == MAT_CUSTOM, cfg.custom_obj, OBJ_MATERIALS{cfg.material, 2});
+        end
         if cfg.ground == 4
             opts.ground = false;
         else
