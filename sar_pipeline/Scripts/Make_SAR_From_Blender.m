@@ -55,6 +55,9 @@ o = struct('views', views, 'up_axis', 'y', 'scale', 1, 'bw', 1e6*fieldget(S, 'ba
 if isfield(S, 'factors'), o.factors = S.factors(:)'; end
 if isfield(S, 'finish') && ~isempty(S.finish), o.finish = char(S.finish); end
 if isfield(S, 'ground_finish') && ~isempty(S.ground_finish), o.ground_finish = char(S.ground_finish); end
+% A radar finish per material name ('auto', or {name: finish or Radar_Materials name}),
+% sent when the scene has materials (e.g. one made by Earth Capture)
+if isfield(S, 'materials') && ~isempty(S.materials), o.materials = S.materials; end
 names = fieldnames(opts);
 for k = 1:numel(names), o.(names{k}) = opts.(names{k}); end
 

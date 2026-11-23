@@ -78,8 +78,9 @@ function [index, notes, run] = Make_Multi_Angle_Dataset(obj_path, out_root, opts
 %                in centimetres). Automatic reads the file's own comments and
 %                otherwise judges from the size (see Analyze_Mesh), so a model
 %                in inches or millimetres comes out at its real size.
-%   finish, ground, ground_finish
-%                passed to Convert_OBJ_to_POV
+%   finish, ground, ground_finish, materials
+%                passed to Convert_OBJ_to_POV (materials: a radar finish
+%                per material name of the file; default off)
 %   cull         load only the parts of the scene that can affect each view
 %                (default true; see Scene_Body). What lets a window on a city of
 %                millions of triangles cost about the same as one on a street.
@@ -159,7 +160,7 @@ else
     co.up_axis = g('up_axis', 'auto');
     co.scale = g('scale', 'auto');
     co.progress = report;
-    for f = {'finish', 'ground', 'ground_finish'}
+    for f = {'finish', 'ground', 'ground_finish', 'materials'}
         if isfield(opts, f{1}), co.(f{1}) = opts.(f{1}); end
     end
     info = Convert_OBJ_to_POV(obj_path, base_pov, co);
@@ -233,6 +234,10 @@ fprintf('\n%d views of %s\n', n_views, name);
 
 % 3) One image set per view
 run = {};
+% The index rows of the views already in the folder, read once; each finished
+% view updates its row here, so the index is rewritten as views finish
+% without reading every view's file again each time
+known = index_rows(root);
 for i_view = 1:n_views
     if should_stop()
         fprintf('\nStopped before view %d of %d.\n', i_view, n_views);
@@ -310,8 +315,9 @@ for i_view = 1:n_views
     end
     if exist(vdir, 'dir') == 7
         save(fullfile(vdir, 'view_info.mat'), 'row');
+        known(id) = row;
     end
-    write_index(root);
+    write_index_csv(root, rows_of(known));
     run{end+1} = row; %#ok<AGROW>
     view_done(i_view, n_views, row);
 end
@@ -535,7 +541,34 @@ end
 if isempty(index)
     index = repmat(view_row('', struct('bearing', 0, 'incidence', 0, 'center', [0 0], 'fraction', 1)), 1, 0);
 end
+write_index_csv(root, index);
+end
 
+
+function known = index_rows(root)
+% The rows of the views already in the folder, by view folder name
+known = containers.Map('KeyType', 'char', 'ValueType', 'any');
+d = dir(fullfile(root, 'views', '*', 'view_info.mat'));
+for i = 1:numel(d)
+    s = load(fullfile(d(i).folder, d(i).name), 'row');
+    [~, vname] = fileparts(d(i).folder);
+    known(vname) = s.row;
+end
+end
+
+
+function index = rows_of(known)
+% The rows as a struct array, in view order
+v = values(known);
+if isempty(v)
+    index = repmat(view_row('', struct('bearing', 0, 'incidence', 0, 'center', [0 0], 'fraction', 1)), 1, 0);
+else
+    index = [v{:}];
+end
+end
+
+
+function write_index_csv(root, index)
 fid = fopen(fullfile(root, 'dataset_index.csv'), 'w');
 fprintf(fid, ['view,bearing_deg,incidence_deg,center_x,center_z,window,window_m,status,bandwidth_mhz,' ...
     'hr_res_m,image_px,image_py,seed,seconds,hr,lr,message\n']);
@@ -564,6 +597,12 @@ for i = 1:numel(parts)
     p = parts{i};
     if isnumeric(p) || islogical(p), p = mat2str(p); end
     k = [k '|' char(p)]; %#ok<AGROW>
+end
+% Only when used, so scenes converted without materials keep their key
+m = get_opt(opts, 'materials', []);
+if ~isempty(m)
+    if isstruct(m), m = jsonencode(m); end
+    k = [k '|materials:' char(m)];
 end
 end
 
