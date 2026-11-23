@@ -16,7 +16,7 @@ param(
     [int]$TimeoutSec = 3600
 )
 
-Add-Type -TypeDefinition @'
+$source = @'
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -39,6 +39,17 @@ public class EngineWindows {
     }
 }
 '@
+
+# Compiling the helper takes about a second, so it is compiled once into a DLL
+# in the temp folder, named after its source, and loaded from there on every
+# later render. If that fails for any reason it is compiled in memory as before.
+$hash = [BitConverter]::ToString([Security.Cryptography.SHA1]::Create().ComputeHash(
+    [Text.Encoding]::UTF8.GetBytes($source))).Replace('-', '').Substring(0, 12)
+$dll = Join-Path $env:TEMP "TerraBound_EngineWindows_$hash.dll"
+if (-not (Test-Path $dll)) {
+    try { Add-Type -TypeDefinition $source -OutputAssembly $dll -OutputType Library -ErrorAction Stop } catch { }
+}
+try { Add-Type -Path $dll -ErrorAction Stop } catch { Add-Type -TypeDefinition $source }
 
 $p = Start-Process -FilePath $Exe -WorkingDirectory $WorkDir -WindowStyle Minimized -PassThru `
     -ArgumentList '/EXIT', "+I`"$PovFile`"", "+W$Wpx", "+H$Hpx", "+L`"$IncludeDir`""
