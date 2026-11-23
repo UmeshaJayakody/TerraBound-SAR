@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: >-
+  If you use TerraBound SAR, please cite it as below. Work that uses its SAR
+  images must also cite RaySAR (see references).
+title: "TerraBound SAR: real-world SAR super-resolution datasets from open data with RaySAR"
+type: software
+authors:
+  - family-names: Jayakody
+    given-names: Umesha
+license: MIT
+repository-code: "https://github.com/UmeshaJayakody/TerraBound-SAR"
+version: 0.1.0
+date-released: 2026-11-23
+keywords:
+  - synthetic aperture radar
+  - SAR simulation
+  - super-resolution
+  - RaySAR
+  - dataset generation
+  - OpenStreetMap
+references:
+  - type: article
+    title: "Ray-Tracing Simulation Techniques for Understanding High-Resolution SAR Images"
+    authors:
+      - family-names: Auer
+        given-names: Stefan
+      - family-names: Hinz
+        given-names: Stefan
+      - family-names: Bamler
+        given-names: Richard
+    journal: "IEEE Transactions on Geoscience and Remote Sensing"
+    volume: 48
+    issue: 3
+    start: 1445
+    end: 1456
+    year: 2010
+    doi: "10.1109/TGRS.2009.2029339"
+  - type: thesis
+    title: "3D Synthetic Aperture Radar Simulation for Interpreting Complex Urban Reflection Scenarios"
+    authors:
+      - family-names: Auer
+        given-names: Stefan
+    institution:
+      name: "Technische Universität München"
+    year: 2011
+    url: "http://mediatum.ub.tum.de/doc/1003958/1003958.pdf"
+  - type: conference-paper
+    title: "SAR image formation toolbox for MATLAB"
+    authors:
+      - family-names: Gorham
+        given-names: LeRoy A.
+      - family-names: Moore
+        given-names: L.
+    collection-title: "Proc. SPIE 7699, Algorithms for Synthetic Aperture Radar Imagery XVII"
+    year: 2010
+    doi: "10.1117/12.855375"
