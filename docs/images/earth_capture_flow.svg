@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 300" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>Earth Capture flow: from an area on the map to a SAR super-resolution dataset</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a94a0"/>
+    </marker>
+  </defs>
+  <rect width="1180" height="300" rx="14" fill="#f6f7f9"/>
+  <g font-size="15" text-anchor="middle">
+    <!-- boxes -->
+    <rect x="20" y="70" width="150" height="110" rx="10" fill="#1f6feb"/>
+    <text x="95" y="108" fill="#fff" font-weight="700">1. Pick areas</text>
+    <text x="95" y="132" fill="#fff" font-size="13">search, draw, or</text>
+    <text x="95" y="150" fill="#fff" font-size="13">"Suggest places"</text>
+
+    <rect x="200" y="70" width="170" height="110" rx="10" fill="#2a9d8f"/>
+    <text x="285" y="100" fill="#fff" font-weight="700">2. Open data</text>
+    <text x="285" y="124" fill="#fff" font-size="13">Copernicus DEM 30 m</text>
+    <text x="285" y="142" fill="#fff" font-size="13">ESA WorldCover 10 m</text>
+    <text x="285" y="160" fill="#fff" font-size="13">OpenStreetMap</text>
+
+    <rect x="400" y="70" width="170" height="110" rx="10" fill="#6a4c93"/>
+    <text x="485" y="100" fill="#fff" font-weight="700">3. 3D scene</text>
+    <text x="485" y="124" fill="#fff" font-size="13">ground + buildings</text>
+    <text x="485" y="142" fill="#fff" font-size="13">radar material per</text>
+    <text x="485" y="160" fill="#fff" font-size="13">surface (OBJ)</text>
+
+    <rect x="600" y="70" width="170" height="110" rx="10" fill="#c0392b"/>
+    <text x="685" y="100" fill="#fff" font-weight="700">4. RaySAR</text>
+    <text x="685" y="124" fill="#fff" font-size="13">ray tracing of the</text>
+    <text x="685" y="142" fill="#fff" font-size="13">radar echoes</text>
+    <text x="685" y="160" fill="#fff" font-size="13">(Contributions.txt)</text>
+
+    <rect x="800" y="70" width="170" height="110" rx="10" fill="#d35400"/>
+    <text x="885" y="100" fill="#fff" font-weight="700">5. SAR imaging</text>
+    <text x="885" y="124" fill="#fff" font-size="13">raw data, then</text>
+    <text x="885" y="142" fill="#fff" font-size="13">backprojection:</text>
+    <text x="885" y="160" fill="#fff" font-size="13">HR + LR x2 x4 x8</text>
+
+    <rect x="1000" y="70" width="160" height="110" rx="10" fill="#1e8e3e"/>
+    <text x="1080" y="100" fill="#fff" font-weight="700">6. Dataset</text>
+    <text x="1080" y="124" fill="#fff" font-size="13">train / val / test</text>
+    <text x="1080" y="142" fill="#fff" font-size="13">by place, with</text>
+    <text x="1080" y="160" fill="#fff" font-size="13">metadata + licences</text>
+  </g>
+  <g stroke="#8a94a0" stroke-width="2.5" marker-end="url(#a)">
+    <line x1="172" y1="125" x2="196" y2="125"/>
+    <line x1="372" y1="125" x2="396" y2="125"/>
+    <line x1="572" y1="125" x2="596" y2="125"/>
+    <line x1="772" y1="125" x2="796" y2="125"/>
+    <line x1="972" y1="125" x2="996" y2="125"/>
+  </g>
+  <g font-size="13" fill="#4a5560" text-anchor="middle">
+    <text x="285" y="214">needs the internet once per area;</text>
+    <text x="285" y="232">cached after that</text>
+    <text x="785" y="214">all on this computer (MATLAB + the RaySAR engine),</text>
+    <text x="785" y="232">the same pipeline as for hand-made models</text>
+    <text x="95" y="214">Earth Capture app</text>
+    <text x="95" y="232">(Python)</text>
+  </g>
+  <g stroke="#b8c0c8" stroke-width="1.5" fill="none">
+    <path d="M200 196 h170"/>
+    <path d="M600 196 h370"/>
+    <path d="M20 196 h150"/>
+  </g>
+  <text x="590" y="40" font-size="18" font-weight="700" text-anchor="middle" fill="#1d232b">From a place on the map to a SAR super-resolution dataset</text>
+</svg>

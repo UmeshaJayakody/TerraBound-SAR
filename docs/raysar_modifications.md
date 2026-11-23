@@ -13,7 +13,7 @@ None of the changes touch how RaySAR computes anything. The reflectivity maps, t
 | `Simulation_Data.m` | **Manual editing** and **Rendering** buttons rewritten (+125 / −13 lines). See below. |
 | `Maps.m` | **Realistic SAR image** panel added (+225 lines, nothing removed). See below. |
 
-The `.fig` layout files are unchanged. All other files are identical to RaySAR 1.2.
+The `.fig` layout files are unchanged. All other files are identical to RaySAR 1.2. When the workspace folder was renamed to `sar_pipeline`, three comment lines in `Simulation_Data.m` that named the old folder were updated; no code changed.
 
 ## `Simulation_Data.m`
 
