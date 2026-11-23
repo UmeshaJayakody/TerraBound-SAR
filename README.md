@@ -15,13 +15,13 @@ Real matched HR/LR SAR image pairs of the same scene essentially don't exist pub
 1. **Build a 3D scene** — a `.pov` file (or a `.obj` 3D model converted to one) describing camera, light, ground, and objects.
 2. **Ray-trace it (RaySAR)** — the engine simulates radar signal bounces off every surface (direct hits, ground bounces, multi-bounce reflections) and records every contribution's position, intensity, and bounce count.
 
-![Pipeline overview: 3D scene -> RaySAR ray tracing -> Contributions.txt -> reflectivity map (HR image) -> degraded LR versions](RaySAR_Workspace/docs/pipeline_overview.png)
+![Pipeline overview: 3D scene -> RaySAR ray tracing -> Contributions.txt -> reflectivity map (HR image) -> degraded LR versions](docs/pipeline_overview.png)
 
 3. **Build the HR image** — every recorded signal contribution is binned into pixels by position and summed, producing the grayscale SAR "ground truth" image.
 4. **Degrade to LR** — the HR image is blurred, downsampled, and given realistic multiplicative speckle noise at several severity tiers, producing matching low-resolution versions.
 
 Building real geometry instead of hand-placed boxes — converting a `.obj` 3D model into a RaySAR-ready scene:
 
-![OBJ to POV conversion process: parse geometry, triangulate faces, fix ground height to Y=0, split into small mesh chunks, write the .pov scene file](RaySAR_Workspace/docs/obj_to_pov_conversion.png)
+![OBJ to POV conversion process: parse geometry, triangulate faces, fix ground height to Y=0, split into small mesh chunks, write the .pov scene file](docs/obj_to_pov_conversion.png)
 
 See `RaySAR_Workspace/README.md` for exactly how to run each of these stages through its GUI.
