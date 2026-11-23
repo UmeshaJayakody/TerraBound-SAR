@@ -14,10 +14,10 @@ import math
 from pathlib import Path
 
 import numpy as np
+import shapely
 from PIL import Image
 from rasterio.features import rasterize
 from shapely.geometry import mapping, shape
-from shapely.ops import transform as shp_transform
 
 from . import __version__, config
 from .aoi import Area
@@ -75,7 +75,11 @@ def _choose_grid(area: Area, s: SceneSettings, log) -> Grid:
 
 
 def _to_local(frame, geom):
-    return shp_transform(lambda x, y, z=None: frame.to_local(x, y), geom)
+    return shapely.transform(geom, lambda xy: np.column_stack(frame.to_local(xy[:, 0], xy[:, 1])))
+
+
+def _to_geo(frame, geom):
+    return shapely.transform(geom, lambda xy: np.column_stack(frame.to_geo(xy[:, 0], xy[:, 1])))
 
 
 def build_scene(area: Area, settings: SceneSettings | None = None, log=print, force: bool = False) -> dict:
@@ -122,11 +126,17 @@ def build_scene(area: Area, settings: SceneSettings | None = None, log=print, fo
                     continue                                   # not on the ground here
                 roads_local.append(_to_local(frame, f.geom).buffer(width / 2.0))
 
-    # 3) Bare ground under the buildings (the DEM is a surface model), then the Earth's curvature
+    # 3) Bare ground in built areas (the DEM is a surface model: buildings are in it), then the
+    #    Earth's curvature. Built: near a mapped building, or on WorldCover's built-up class.
     built = np.zeros(grid.node_shape, dtype=bool)
     if blds:
-        built = rasterize([(g.buffer(10.0), 1) for g, _, _ in blds], out_shape=grid.node_shape,
+        built = rasterize([(g.buffer(15.0), 1) for g, _, _ in blds], out_shape=grid.node_shape,
                           transform=grid.node_transform, fill=0, dtype="uint8").astype(bool)
+    bu = landcover == 50
+    built[:-1, :-1] |= bu
+    built[:-1, 1:] |= bu
+    built[1:, :-1] |= bu
+    built[1:, 1:] |= bu
     ground = tmesh.ground_from_surface(surface, built, grid.spacing)
     up = ground - frame.curvature_drop(X, Y)
 
@@ -159,7 +169,7 @@ def build_scene(area: Area, settings: SceneSettings | None = None, log=print, fo
             made = True
         if made:
             height_sources[src] += 1
-            geo = shp_transform(lambda x, y, z=None: frame.to_geo(x, y), g)
+            geo = _to_geo(frame, g)
             preview.append({"type": "Feature", "geometry": mapping(geo),
                             "properties": {"osm": oid, "height_m": round(h, 1), "height_source": src,
                                            "material": material}})

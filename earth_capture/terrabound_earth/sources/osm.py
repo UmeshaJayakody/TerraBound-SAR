@@ -181,7 +181,7 @@ def parse(data: dict) -> OsmData:
 
 def fetch(bounds, log=print) -> OsmData:
     """Buildings, water and roads inside bounds (west, south, east, north), from the cache or Overpass."""
-    log("  downloading OpenStreetMap buildings, water and roads ...")
+    log("  OpenStreetMap buildings, water and roads ...")
     data = post_json_cached(OVERPASS_SERVERS, {"data": _query(bounds)}, "osm", log=log)
     out = parse(data)
     log(f"  OpenStreetMap: {len(out.buildings)} buildings, {len(out.water)} water areas, {len(out.roads)} roads")

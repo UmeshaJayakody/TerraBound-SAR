@@ -51,7 +51,7 @@ def _drives() -> list[str]:
 
 
 def _newest(paths: list[str]) -> str | None:
-    paths = [p for p in paths if os.path.isfile(p)]
+    paths = [os.path.normpath(p) for p in paths if os.path.isfile(p)]
     return max(paths, key=os.path.getmtime) if paths else None
 
 

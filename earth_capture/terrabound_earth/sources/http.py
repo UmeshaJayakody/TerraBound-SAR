@@ -43,6 +43,9 @@ def url_status(url: str, timeout: float = 30) -> int:
     """HTTP status of a URL (HEAD), or 0 if it could not be reached at all."""
     try:
         r = session().head(url, timeout=timeout, allow_redirects=True)
+        if r.status_code == 405:          # some APIs answer only GET
+            r = session().get(url, timeout=timeout, stream=True)
+            r.close()
         return r.status_code
     except requests.RequestException:
         return 0
