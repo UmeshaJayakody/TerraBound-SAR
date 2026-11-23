@@ -189,9 +189,11 @@ def size_problem(name, view, bandwidth_mhz):
             (name, view["width_m"], cols, rows, 2 * pix, MAX_PX, ok_width))
 
 
-def make_payload(obj_path, out_dir, bandwidth_mhz, factors, views):
-    """What is written to the views file that MATLAB reads."""
-    return {
+def make_payload(obj_path, out_dir, bandwidth_mhz, factors, views, materials=None):
+    """What is written to the views file that MATLAB reads. materials ('auto') is only sent for scenes
+    whose material names are radar materials (e.g. made by Earth Capture), so MATLAB gives buildings,
+    roads and water their own response."""
+    payload = {
         "format": 1,
         "obj": obj_path,
         "out_folder": out_dir,
@@ -199,6 +201,9 @@ def make_payload(obj_path, out_dir, bandwidth_mhz, factors, views):
         "factors": factors,
         "views": views,
     }
+    if materials:
+        payload["materials"] = materials
+    return payload
 
 
 def parse_factors(text):
@@ -354,9 +359,11 @@ if bpy is not None:
         v["name"] = cam.name
         return v
 
-    def _export_obj(filepath):
+    def _export_obj(filepath, materials=False):
         """Exports the visible meshes with the default OBJ axes (forward -Z, up Y). The yellow
-        window boxes are hidden while it runs, so they do not become part of the model."""
+        window boxes are hidden while it runs, so they do not become part of the model. With
+        materials, each face keeps its material name ("usemtl"), which MATLAB turns into a radar
+        response."""
         boxes = [(o, o.hide_get()) for o in bpy.context.scene.objects if _is_window(o)]
         for o, _ in boxes:
             o.hide_set(True)
@@ -364,10 +371,10 @@ if bpy is not None:
             if hasattr(bpy.ops.wm, "obj_export"):                      # Blender 3.3 and later
                 bpy.ops.wm.obj_export(filepath=filepath, forward_axis="NEGATIVE_Z", up_axis="Y",
                                       export_selected_objects=False, apply_modifiers=True,
-                                      export_materials=False, export_uv=False, export_normals=False)
+                                      export_materials=bool(materials), export_uv=False, export_normals=False)
             else:                                                      # older Blender
                 bpy.ops.export_scene.obj(filepath=filepath, axis_forward="-Z", axis_up="Y", use_selection=False,
-                                         use_mesh_modifiers=True, use_materials=False, use_uvs=False,
+                                         use_mesh_modifiers=True, use_materials=bool(materials), use_uvs=False,
                                          use_normals=False)
         finally:
             for o, was_hidden in boxes:
@@ -422,10 +429,11 @@ if bpy is not None:
         views = collect_views(context, cams)
         os.makedirs(out_dir, exist_ok=True)
         obj_path = os.path.join(out_dir, "blender_scene.obj")
-        _export_obj(obj_path)
+        _export_obj(obj_path, materials=s.materials)
         json_path = os.path.join(out_dir, "sar_views.json")
         with open(json_path, "w") as f:
-            json.dump(make_payload(obj_path, out_dir, s.bandwidth_mhz, parse_factors(s.factors), views), f, indent=2)
+            json.dump(make_payload(obj_path, out_dir, s.bandwidth_mhz, parse_factors(s.factors), views,
+                                   s.materials), f, indent=2)
         return obj_path, json_path, views
 
     def start_matlab(context, json_path, out_dir):
@@ -490,7 +498,8 @@ if bpy is not None:
         try:
             ctx = bpy.context
             s = ctx.scene.sar_view
-            payload = make_payload(os.path.join(d, "blender_scene.obj"), d, s.bandwidth_mhz, parse_factors(s.factors), [])
+            payload = make_payload(os.path.join(d, "blender_scene.obj"), d, s.bandwidth_mhz, parse_factors(s.factors), [],
+                                   s.materials)
             payload["problems"] = []
             try:
                 payload["views"] = collect_views(ctx)
@@ -533,6 +542,9 @@ if bpy is not None:
         factors: bpy.props.StringProperty(name="Lower-resolution versions", default="2 4 8",
                                           description="How many times coarser than the HR image, e.g. 2 4 8")
         status: bpy.props.StringProperty(name="Status", default="")
+        materials: bpy.props.StringProperty(name="Radar materials", default="",
+                                            description="'auto' when the scene's material names are radar materials "
+                                                        "(concrete, asphalt, water ...), so each keeps its own response")
 
     class SAR_OT_add_window(bpy.types.Operator):
         bl_idname = "sar.add_window"

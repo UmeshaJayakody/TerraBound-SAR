@@ -1,0 +1,12 @@
+# Earth Capture: the versions it was built and tested with (Python 3.11, Windows).
+# install.ps1 installs these into earth_capture/.venv.
+numpy==2.4.6
+rasterio==1.4.4
+pyproj==3.7.2
+shapely==2.2.0
+mapbox_earcut==2.1.0
+requests==2.34.2
+pillow==13.0.0
+pywebview==6.2.1
+# tests
+pytest==9.2.0

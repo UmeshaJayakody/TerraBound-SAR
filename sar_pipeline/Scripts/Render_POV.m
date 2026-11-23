@@ -45,8 +45,8 @@ end
 turn_off_editor_prompt();
 
 if exist(work_dir, 'dir') ~= 7, mkdir(work_dir); end
-work_dir = char(java.io.File(work_dir).getAbsolutePath());
-pov_path = char(java.io.File(pov_path).getAbsolutePath());
+work_dir = absolute_path(work_dir);
+pov_path = absolute_path(pov_path);
 contrib_path = fullfile(work_dir, 'Contributions.txt');
 if exist(contrib_path, 'file') == 2, delete(contrib_path); end
 
@@ -85,4 +85,14 @@ fid = fopen(ini, 'w');
 if fid < 0, return; end
 fwrite(fid, txt, 'char');
 fclose(fid);
+end
+
+
+function p = absolute_path(p)
+% The full path of p, relative paths taken from the current folder. Plain
+% MATLAB: recent MATLAB releases come without Java, which this used before.
+p = char(p);
+if ~(numel(p) >= 2 && p(2) == ':') && ~startsWith(p, {'\', '/'})
+    p = fullfile(pwd, p);
+end
 end
